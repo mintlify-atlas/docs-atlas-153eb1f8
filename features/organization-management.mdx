@@ -1,0 +1,455 @@
+---
+title: 'Organization Management'
+description: 'Manage organizations and structure your tenant'
+icon: 'building'
+---
+
+Organization Management allows Global Administrators to create, configure, and manage organizations within the Nexus Access Vault platform. Organizations provide tenant isolation and hierarchical access control.
+
+## Overview
+
+The Organizations page provides a centralized view of all organizations in the system, with tools to create new organizations, assign users, and monitor organization health.
+
+**Key Features:**
+- Multi-tenant organization structure
+- Organization creation and deletion
+- User assignment to organizations
+- Organization-level resource isolation
+- Custom branding per organization (logo support)
+- User count tracking
+- Organization status monitoring
+
+<Note>
+  **Permission Required:** This feature is only accessible to users with the `global_admin` role.
+</Note>
+
+## Creating Organizations
+
+### Create New Organization
+
+Global Administrators can create new organizations:
+
+1. Click **Create Organization** button
+2. Enter organization details:
+   - **Organization Name** (required)
+   - **Logo URL** (optional)
+3. Submit the form
+4. Organization is immediately created and appears in the list
+
+**UI Component:** `CreateOrganizationDialog`  
+**Source:** `src/pages/Organizations.tsx:110`
+
+```tsx
+{isGlobalAdmin && <CreateOrganizationDialog onCreated={loadOrganizations} />}
+```
+
+### Organization Properties
+
+```tsx
+interface Organization {
+  id: string;              // Unique identifier
+  name: string;           // Organization name
+  logo_url: string | null; // Optional logo URL
+  created_at: string;     // Creation timestamp
+}
+```
+
+## Organization Display
+
+### Organization Cards
+
+Each organization is displayed as a card showing:
+
+<CardGroup cols={2}>
+  <Card title="Basic Information" icon="info">
+    - Organization name
+    - Logo or default icon
+    - Creation date
+    - Active status badge
+  </Card>
+  <Card title="Metrics" icon="chart-simple">
+    - User count
+    - Organization ID
+    - Last activity
+    - Resource assignments
+  </Card>
+</CardGroup>
+
+**Implementation:**
+```tsx
+// From Organizations.tsx:131
+<Card key={org.id} className="glass glow-card">
+  <CardHeader className="pb-3">
+    <div className="flex items-start justify-between">
+      <div className="flex items-center gap-4">
+        <div className="h-12 w-12 rounded-lg bg-primary/20 flex items-center justify-center">
+          {org.logo_url ? (
+            <img src={org.logo_url} alt={org.name} className="h-8 w-8 rounded object-cover" />
+          ) : (
+            <Building2 className="h-6 w-6 text-primary" />
+          )}
+        </div>
+        <div>
+          <CardTitle className="text-lg">{org.name}</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            {new Date(org.created_at).toLocaleDateString()}
+          </p>
+        </div>
+      </div>
+    </div>
+  </CardHeader>
+</Card>
+```
+
+### User Count Display
+
+```tsx
+// From Organizations.tsx:164
+<div className="flex items-center justify-between">
+  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+    <Users className="h-4 w-4" />
+    <span>{org.user_count} usuarios</span>
+  </div>
+  <Badge variant="secondary">Activa</Badge>
+</div>
+```
+
+## User Assignment
+
+### Assigning Users to Organizations
+
+Global Administrators can assign users to organizations:
+
+1. Click **Assign User** button on organization card
+2. Select user from dropdown
+3. Confirm assignment
+4. User's profile is updated with organization_id
+
+**UI Component:** `AssignUserDialog`  
+**Source:** `src/pages/Organizations.tsx:172`
+
+```tsx
+{isGlobalAdmin && (
+  <AssignUserDialog
+    organizationId={org.id}
+    organizationName={org.name}
+    onAssigned={loadOrganizations}
+  />
+)}
+```
+
+### User Count Calculation
+
+```tsx
+// From Organizations.tsx:43
+const loadOrganizations = async () => {
+  // Get all profiles
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('organization_id');
+
+  // Count users per org
+  const counts: Record<string, number> = {};
+  profiles?.forEach(p => {
+    if (p.organization_id) {
+      counts[p.organization_id] = (counts[p.organization_id] || 0) + 1;
+    }
+  });
+
+  // Enhance orgs with counts
+  const orgsWithCounts = (orgsData || []).map(org => ({
+    ...org,
+    user_count: counts[org.id] || 0,
+  }));
+};
+```
+
+## Deleting Organizations
+
+<Warning>
+  **Destructive Action**  
+  Deleting an organization cannot be undone. Ensure all users and resources are migrated before deletion.
+</Warning>
+
+### Delete Process
+
+1. Click the delete icon (trash) on organization card
+2. Confirm deletion in alert dialog
+3. Organization is permanently removed
+4. Users are unassigned (organization_id set to null)
+5. Resources may be orphaned (depending on cascade rules)
+
+```tsx
+// From Organizations.tsx:75
+const handleDelete = async (id: string, name: string) => {
+  if (!confirm(`¿Eliminar la organización "${name}"? Esta acción no se puede deshacer.`)) return;
+
+  try {
+    const { error } = await supabase
+      .from('organizations')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    toast({
+      title: 'Organización eliminada',
+      description: `${name} ha sido eliminada`,
+    });
+
+    loadOrganizations();
+  } catch (error: any) {
+    toast({
+      title: 'Error',
+      description: error.message,
+      variant: 'destructive',
+    });
+  }
+};
+```
+
+## Organization Data Loading
+
+### Loading Organizations
+
+Organizations are loaded with user counts on page mount:
+
+```tsx
+// From Organizations.tsx:33
+const loadOrganizations = async () => {
+  try {
+    // Get organizations
+    const { data: orgsData, error: orgsError } = await supabase
+      .from('organizations')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (orgsError) throw orgsError;
+
+    // Get user counts per organization
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('organization_id');
+
+    if (profilesError) throw profilesError;
+
+    // Count users per org
+    const counts: Record<string, number> = {};
+    profiles?.forEach(p => {
+      if (p.organization_id) {
+        counts[p.organization_id] = (counts[p.organization_id] || 0) + 1;
+      }
+    });
+
+    const orgsWithCounts = (orgsData || []).map(org => ({
+      ...org,
+      user_count: counts[org.id] || 0,
+    }));
+
+    setOrgs(orgsWithCounts);
+  } catch (error: any) {
+    toast({
+      title: 'Error',
+      description: error.message,
+      variant: 'destructive',
+    });
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+## Permission Control
+
+### Global Admin Check
+
+All organization management actions are protected by role check:
+
+```tsx
+// From Organizations.tsx:101
+const isGlobalAdmin = profile?.role === 'global_admin';
+
+return (
+  <div className="space-y-6">
+    <div className="flex items-center justify-between">
+      <div>
+        <h1 className="text-3xl font-bold">Organizaciones</h1>
+        <p className="text-muted-foreground">Gestiona todas las organizaciones del sistema</p>
+      </div>
+      {isGlobalAdmin && <CreateOrganizationDialog onCreated={loadOrganizations} />}
+    </div>
+  </div>
+);
+```
+
+### Conditional UI Elements
+
+Management controls only appear for Global Admins:
+
+<Tabs>
+  <Tab title="Global Admin View">
+    - Create Organization button
+    - Delete organization button on each card
+    - Assign User button on each card
+    - Full access to all organizations
+  </Tab>
+  <Tab title="Org Admin View">
+    - View only their own organization
+    - Cannot create or delete organizations
+    - Can manage users within their org
+    - Limited to organization-scoped resources
+  </Tab>
+  <Tab title="Regular User View">
+    - Cannot access Organizations page
+    - Redirected or shown permission error
+    - Can only see their assigned organization info
+  </Tab>
+</Tabs>
+
+## Organization Hierarchy
+
+### Tenant Isolation
+
+Organizations provide complete data isolation:
+
+```sql
+-- Resources filtered by organization
+SELECT * FROM resources 
+WHERE organization_id = current_user_org;
+
+-- Users scoped to organization
+SELECT * FROM profiles 
+WHERE organization_id = current_user_org;
+
+-- Groups within organization
+SELECT * FROM groups 
+WHERE organization_id = current_user_org;
+```
+
+### Data Relationships
+
+<Steps>
+  <Step title="Organization">
+    Root tenant entity - isolated data boundary
+  </Step>
+  <Step title="Users (Profiles)">
+    Belong to one organization via `organization_id` foreign key
+  </Step>
+  <Step title="Groups">
+    Scoped to organization, organize users
+  </Step>
+  <Step title="Resources">
+    Organization-owned applications and services
+  </Step>
+  <Step title="Policies">
+    Organization-level access control rules
+  </Step>
+  <Step title="Audit Logs">
+    Filtered by organization for compliance
+  </Step>
+</Steps>
+
+## Empty States
+
+### No Organizations
+
+If no organizations exist in the system:
+
+```tsx
+// From Organizations.tsx:119
+<Card className="glass">
+  <CardContent className="py-12 text-center">
+    <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+    <p className="text-muted-foreground">No hay organizaciones</p>
+    {isGlobalAdmin && (
+      <p className="text-sm text-muted-foreground mt-2">
+        Crea la primera organización para comenzar
+      </p>
+    )}
+  </CardContent>
+</Card>
+```
+
+## Loading States
+
+While organizations are being loaded:
+
+```tsx
+// From Organizations.tsx:113
+{loading ? (
+  <div className="text-center py-12">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto mb-4"></div>
+    <p className="text-muted-foreground">Cargando organizaciones...</p>
+  </div>
+) : (
+  // Organization cards
+)}
+```
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="MSP Multi-Tenancy" icon="building-shield">
+    Managed Service Providers can create separate organizations for each client, ensuring complete data isolation
+  </Card>
+  <Card title="Enterprise Subsidiaries" icon="sitemap">
+    Large enterprises can create organizations for different business units or subsidiaries
+  </Card>
+  <Card title="Partner Organizations" icon="handshake">
+    Create separate organizations for partners and vendors with limited access
+  </Card>
+  <Card title="Development Environments" icon="flask">
+    Separate organizations for development, staging, and production environments
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Naming Conventions">
+    Use clear, descriptive names for organizations. Include client name or business unit identifier.
+    
+    Examples:
+    - `Acme Corp - Production`
+    - `Client: XYZ Industries`
+    - `Partner: ABC Solutions`
+  </Accordion>
+  
+  <Accordion title="User Assignment">
+    Assign users to organizations immediately after account creation. Users without organization assignment may have limited access.
+  </Accordion>
+  
+  <Accordion title="Logo Management">
+    Upload organization logos to create branded experiences. Use square images, minimum 200x200px.
+  </Accordion>
+  
+  <Accordion title="Regular Audits">
+    Periodically review organizations and their user counts. Remove inactive organizations to maintain system hygiene.
+  </Accordion>
+</AccordionGroup>
+
+## Organization Branding
+
+### Logo Display
+
+Organizations can have custom logos:
+
+```tsx
+{org.logo_url ? (
+  <img src={org.logo_url} alt={org.name} className="h-8 w-8 rounded object-cover" />
+) : (
+  <Building2 className="h-6 w-6 text-primary" />
+)}
+```
+
+**Logo Requirements:**
+- Format: PNG, JPG, SVG
+- Recommended size: 200x200px minimum
+- Aspect ratio: Square (1:1)
+- Hosted URL or base64 encoded
+
+## Related Features
+
+- [User Groups](/features/user-groups) - Organize users within organizations
+- [Policies](/features/policies) - Organization-scoped access policies
+- [Audit Logging](/features/audit-logging) - Organization-filtered audit trails

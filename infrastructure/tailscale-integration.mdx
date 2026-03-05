@@ -1,0 +1,391 @@
+---
+title: Tailscale Integration
+description: Integrate Tailscale VPN for secure device enrollment and zero-trust network access
+---
+
+## Overview
+
+Tailscale integration provides seamless device enrollment and monitoring within Nexus Access Vault. Devices can be automatically enrolled in your Tailscale network, ensuring zero-trust connectivity with end-to-end encryption.
+
+## Prerequisites
+
+- Tailscale account with API access
+- OAuth client credentials from Tailscale admin console
+- Tailscale auth key (for device enrollment)
+- Supabase project with Edge Functions enabled
+
+## Configuration
+
+### Environment Variables
+
+Configure the following environment variables for Tailscale integration:
+
+```bash
+# Tailscale OAuth Credentials
+TAILSCALE_CLIENT_ID="your-oauth-client-id"
+TAILSCALE_CLIENT_SECRET="your-oauth-client-secret"
+
+# Tailscale Auth Key (for device enrollment)
+TAILSCALE_AUTH_KEY="tskey-auth-xxxxxxxxxx"
+```
+
+### Obtaining OAuth Credentials
+
+1. Log in to the [Tailscale Admin Console](https://login.tailscale.com/admin)
+2. Navigate to **Settings** → **OAuth clients**
+3. Click **Generate OAuth client**
+4. Select the following scopes:
+   - `devices:read` - Read device information
+   - `devices:write` - Manage devices
+5. Save the Client ID and Client Secret
+
+### Generating Auth Keys
+
+1. In the Tailscale Admin Console, go to **Settings** → **Keys**
+2. Click **Generate auth key**
+3. Configure the key:
+   - **Reusable**: Yes (for multiple device enrollments)
+   - **Ephemeral**: No (for persistent devices)
+   - **Pre-authorized**: Yes (auto-approve devices)
+   - **Tags**: Add tags like `tag:prod` or `tag:sap`
+4. Copy the generated key
+
+## Tailscale API Edge Function
+
+The Tailscale API integration is implemented as a Supabase Edge Function at:
+
+```
+supabase/functions/tailscale-api/index.ts
+```
+
+### Available Actions
+
+#### 1. List Devices
+
+Retrieve all devices in your Tailscale network:
+
+```typescript
+const { data, error } = await supabase.functions.invoke('tailscale-api', {
+  body: {
+    action: 'list-devices'
+  }
+});
+
+if (data?.success) {
+  console.log('Devices:', data.devices);
+}
+```
+
+#### 2. Check Device Status
+
+Check if a specific device is online:
+
+```typescript
+const { data, error } = await supabase.functions.invoke('tailscale-api', {
+  body: {
+    action: 'check-device',
+    identifier: 'my-laptop' // hostname, name, or IP
+  }
+});
+
+if (data?.found && data?.online) {
+  console.log('Device is online:', data.device);
+}
+```
+
+#### 3. Generate Auth Key
+
+Generate a Tailscale auth key for device enrollment:
+
+```typescript
+const { data, error } = await supabase.functions.invoke('tailscale-api', {
+  body: {
+    action: 'generate-auth-key',
+    deviceId: 'uuid-of-device',
+    tags: ['tag:prod'],
+    group: 'sap'
+  },
+  headers: {
+    Authorization: `Bearer ${session.access_token}`
+  }
+});
+
+if (data?.success) {
+  console.log('Auth key:', data.authKey);
+  console.log('Expires at:', data.expiresAt);
+}
+```
+
+#### 4. Validate Enrollment
+
+Validate that a device has successfully enrolled:
+
+```typescript
+const { data, error } = await supabase.functions.invoke('tailscale-api', {
+  body: {
+    action: 'validate-enrollment',
+    deviceId: 'uuid-of-device',
+    hostname: 'my-laptop'
+  },
+  headers: {
+    Authorization: `Bearer ${session.access_token}`
+  }
+});
+
+if (data?.enrolled) {
+  console.log('Device enrolled successfully:', data.device);
+}
+```
+
+#### 5. Sync Devices
+
+Sync Tailscale device status with local database:
+
+```typescript
+const { data, error } = await supabase.functions.invoke('tailscale-api', {
+  body: {
+    action: 'sync-devices'
+  },
+  headers: {
+    Authorization: `Bearer ${session.access_token}`
+  }
+});
+
+console.log(`Synced ${data.synced} devices`);
+```
+
+## Tailscale Monitor Component
+
+The `TailscaleMonitor` component provides real-time monitoring of device connectivity:
+
+### Component Usage
+
+```tsx
+import { TailscaleMonitor } from '@/components/devices/TailscaleMonitor';
+
+function Dashboard() {
+  return (
+    <TailscaleMonitor 
+      userId={user.id} 
+      organizationId={profile.organization_id} 
+    />
+  );
+}
+```
+
+### Features
+
+- **Real-time Updates**: Subscribes to device status changes via Supabase Realtime
+- **Connection Polling**: Checks device connectivity every 30 seconds
+- **Status Indicators**: Visual badges for online, offline, and pending devices
+- **Last Seen Tracking**: Shows when devices were last active
+- **Manual Refresh**: Button to force status update
+
+### Status States
+
+<CodeGroup>
+
+```typescript Active
+status === 'active'
+// Device is connected and online
+// Shows green badge with CheckCircle icon
+```
+
+```typescript Pending
+status === 'pending'
+// Device enrollment initiated but not yet connected
+// Shows yellow badge with AlertCircle icon
+```
+
+```typescript Offline
+status === 'offline'
+// Device was active but hasn't been seen recently
+// Shows red badge with XCircle icon
+```
+
+</CodeGroup>
+
+## Device Enrollment Flow
+
+### Automatic Enrollment
+
+1. User registers a new device in the portal
+2. Portal calls `generate-auth-key` action with device details
+3. Auth key is stored in device metadata
+4. User receives enrollment instructions with the auth key
+5. User runs Tailscale on their device:
+   ```bash
+   tailscale up --authkey=tskey-auth-xxxxxxxxxx
+   ```
+6. Portal validates enrollment with `validate-enrollment` action
+7. Device status updates to "active" when connection confirmed
+
+### Database Schema
+
+Device metadata stores Tailscale information:
+
+```typescript
+interface DeviceMetadata {
+  tailscale_auth_key?: string;
+  tailscale_key_expires?: string;
+  tailscale_tags?: string[];
+  tailscale_group?: string;
+  tailscale_device_id?: string;
+  tailscale_hostname?: string;
+  tailscale_ip?: string;
+  tailscale_os?: string;
+  tailscale_online?: boolean;
+  tailscale_last_seen?: string;
+}
+```
+
+## Event Logging
+
+All Tailscale operations are logged to the `device_events` table:
+
+### Auth Key Generated
+
+```typescript
+await supabase.from('device_events').insert({
+  device_id: deviceId,
+  event_type: 'tailscale_auth_key_generated',
+  details: { 
+    tags, 
+    group, 
+    expiresAt: authKey.expiresAt 
+  },
+});
+```
+
+### Enrollment Complete
+
+```typescript
+await supabase.from('device_events').insert({
+  device_id: deviceId,
+  event_type: 'tailscale_enrollment_complete',
+  details: {
+    tailscale_device_id: tailscaleDevice.id,
+    hostname: tailscaleDevice.hostname,
+    ip: tailscaleDevice.ipAddresses?.[0],
+  },
+});
+```
+
+## Security Considerations
+
+<Warning>
+  **Protect OAuth Credentials**: Never expose your Tailscale Client ID and Client Secret in client-side code. These should only be stored as environment variables in your Edge Functions.
+</Warning>
+
+### Best Practices
+
+1. **Use Pre-authorized Keys**: Enable pre-authorization to avoid manual approval
+2. **Set Expiration**: Configure auth keys to expire after 24 hours
+3. **Apply Tags**: Use Tailscale tags to enforce ACL policies
+4. **Audit Logs**: Review device_events table regularly
+5. **Rotate Credentials**: Periodically rotate OAuth client credentials
+6. **Enable MFA**: Require multi-factor authentication for Tailscale admin access
+
+## ACL Configuration
+
+Configure Tailscale ACLs to restrict device access:
+
+```json
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["tag:prod"],
+      "dst": ["tag:sap:*"]
+    },
+    {
+      "action": "accept",
+      "src": ["tag:admin"],
+      "dst": ["*:*"]
+    }
+  ],
+  "tagOwners": {
+    "tag:prod": ["autogroup:admin"],
+    "tag:sap": ["autogroup:admin"],
+    "tag:admin": ["autogroup:admin"]
+  }
+}
+```
+
+## Monitoring and Alerts
+
+### Real-time Monitoring
+
+The TailscaleMonitor component automatically:
+
+- Updates device status every 30 seconds
+- Marks devices offline if not seen within 2 minutes
+- Shows connection summary badges
+- Provides manual refresh capability
+
+### Status Checks
+
+Implement automated status checks:
+
+```typescript
+// Check device status periodically
+const checkConnectionStatus = async () => {
+  const now = new Date().toISOString();
+  
+  for (const device of devices) {
+    if (device.status === 'active') {
+      const lastSeen = device.last_seen ? new Date(device.last_seen) : null;
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+      
+      if (!lastSeen || lastSeen < twoMinutesAgo) {
+        await supabase
+          .from('devices')
+          .update({ status: 'offline', last_seen: now })
+          .eq('id', device.id);
+      }
+    }
+  }
+};
+```
+
+## Troubleshooting
+
+### OAuth Token Errors
+
+If you receive OAuth token errors:
+
+1. Verify Client ID and Client Secret are correct
+2. Check that the OAuth client has required scopes
+3. Ensure credentials are set in Supabase environment variables
+
+```bash
+# View Edge Function logs
+supabase functions logs tailscale-api
+```
+
+### Device Not Appearing
+
+If a device doesn't appear after enrollment:
+
+1. Verify auth key hasn't expired
+2. Check device is running Tailscale:
+   ```bash
+   tailscale status
+   ```
+3. Validate device appears in Tailscale admin console
+4. Run sync-devices action to force synchronization
+
+### Connection Status Issues
+
+If device status is incorrect:
+
+1. Check Realtime subscription is active
+2. Verify polling interval (30 seconds)
+3. Review last_seen timestamp in database
+4. Force refresh in TailscaleMonitor component
+
+## Related Resources
+
+- [Headscale Setup](/infrastructure/headscale-setup) - Self-hosted Tailscale alternative
+- [NetBird Integration](/infrastructure/netbird-integration) - Alternative VPN solution
+- [Cloud Providers](/infrastructure/cloud-providers) - Cloud infrastructure integration

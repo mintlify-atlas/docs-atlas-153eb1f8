@@ -1,0 +1,202 @@
+---
+title: Organization Structure
+description: Visualize and understand the hierarchical structure of organizations, groups, users, and resources
+---
+
+The **Organization Structure** page displays a hierarchical tree view of your entire organization, including groups, users, and their resource assignments. It also provides a permissions matrix for each role.
+
+## Access Requirements
+
+<Note>
+  Organization Structure is accessible to all roles. The view is filtered based on your permissions.
+</Note>
+
+## Tree View
+
+### Hierarchy Levels
+
+The tree view displays four levels:
+
+```
+Organization
+└── Group
+    └── User
+        └── Resource
+```
+
+### Navigation
+
+Expand/collapse each level by clicking:
+
+- **Organization node**: Shows/hides groups
+- **Group node**: Shows/hides users in that group
+- **User node**: Shows/hides resources assigned to that user
+
+<Note>
+  The first organization is automatically expanded when the page loads.
+</Note>
+
+## Visual Elements
+
+### Organization Node
+
+- **Color**: Violet background with violet border
+- **Icon**: Building icon
+- **Info**: Shows count of groups and users
+- **Example**: "Engineering Dept • 5 grupos • 23 usuarios"
+
+### Group Node
+
+- **Color**: Blue background with blue border
+- **Icon**: Layers icon
+- **Info**: Shows count of users in the group
+- **Connection**: Vertical line connects to parent organization
+
+### User Node
+
+- **Color**: Emerald background with emerald border
+- **Avatar**: First initial of user's name
+- **Badge**: Role badge (color-coded by role)
+- **Connection**: Vertical line connects to parent group
+
+### Resource Node
+
+- **Color**: Amber background with amber border
+- **Icon**: Server icon
+- **Badge**: Resource type (e.g., "web_app", "ssh_server")
+- **Connection**: Vertical line connects to parent user
+
+## Role Color Coding
+
+Roles are visually distinguished:
+
+| Role | Background | Text | Border |
+|------|------------|------|--------|
+| Global Admin | Red/20 | Red 400 | Red 500/50 |
+| Org Admin | Violet/20 | Violet 400 | Violet 500/50 |
+| Support | Blue/20 | Blue 400 | Blue 500/50 |
+| User | Emerald/20 | Emerald 400 | Emerald 500/50 |
+
+## Permissions Matrix
+
+The right sidebar displays the **Permissions by Role** matrix:
+
+### Global Admin Permissions
+
+- ✅ Ver todo (View all)
+- ✅ Editar todo (Edit all)
+- ✅ Eliminar (Delete)
+- ✅ Gestionar usuarios (Manage users)
+- ✅ Gestionar orgs (Manage organizations)
+
+### Org Admin Permissions
+
+- ✅ Ver org (View organization)
+- ✅ Editar org (Edit organization)
+- ✅ Eliminar (Delete)
+- ✅ Gestionar usuarios (Manage users)
+- ❌ Gestionar orgs (Cannot manage other organizations)
+
+### Support Permissions
+
+- ✅ Ver org (View organization)
+- ✅ Editar básico (Basic editing)
+- ❌ Eliminar (Cannot delete)
+- ✅ Gestionar usuarios (Manage users)
+- ❌ Gestionar orgs (Cannot manage organizations)
+
+### User Permissions
+
+- ✅ Ver propio (View own data)
+- ✅ Editar propio (Edit own data)
+- ❌ Eliminar (Cannot delete)
+- ❌ Gestionar usuarios (Cannot manage users)
+- ❌ Gestionar orgs (Cannot manage organizations)
+
+## Legend
+
+The bottom right card provides a visual legend:
+
+- **Violet square**: Organization
+- **Blue square**: Group
+- **Emerald square**: User
+- **Amber square**: Recurso/App (Resource/Application)
+
+## Use Cases
+
+### Understanding Access Paths
+
+Trace how a user gains access to a resource:
+
+1. Expand organization
+2. Find and expand the group
+3. Locate the user within the group
+4. Expand user to see assigned resources
+
+### Auditing Group Membership
+
+Verify which users belong to a specific group:
+
+1. Expand organization
+2. Expand the target group
+3. Review the list of users
+
+### Identifying Unassigned Users
+
+Find users without resource access:
+
+1. Expand groups and users
+2. Look for users showing "Sin recursos asignados"
+
+<Note>
+  Empty states display helpful messages:
+  - "Sin grupos" when an organization has no groups
+  - "Sin usuarios en este grupo" when a group is empty
+  - "Sin recursos asignados" when a user has no resources
+</Note>
+
+## Loading State
+
+While data is loading:
+
+- Animated spinner (Loader2 icon)
+- Centered on the page
+
+## Auto-Sync
+
+The tree view automatically loads:
+
+- Organizations
+- Groups (filtered by organization)
+- Users (filtered by organization)
+- Resources (filtered by organization)
+- User-group relationships
+- User-resource access records
+
+## Permissions
+
+| Action | User | Support | Org Admin | Global Admin |
+|--------|------|---------|-----------|---------------|
+| View tree | ✅ | ✅ | ✅ | ✅ |
+| Expand/collapse | ✅ | ✅ | ✅ | ✅ |
+| View permissions matrix | ✅ | ✅ | ✅ | ✅ |
+
+<Note>
+  The tree view is read-only. To make changes, use the [Admin Panel](/admin/admin-panel) or [User Management](/admin/user-management) pages.
+</Note>
+
+## Best Practices
+
+<Note>
+  **Organize by Department**: Structure groups by department or team for clarity (e.g., "Engineering", "Sales", "Support").
+</Note>
+
+<Note>
+  **Role Hierarchy**: Assign admin roles at the group level, not individual resources.
+</Note>
+
+## Related Pages
+
+- [Admin Panel](/admin/admin-panel)
+- [User Management](/admin/user-management)
+- [Roles & Permissions](/admin/roles-permissions)

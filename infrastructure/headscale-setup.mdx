@@ -1,0 +1,462 @@
+---
+title: Headscale Setup
+description: Configure self-hosted Headscale for private mesh networking
+---
+
+## Overview
+
+Headscale is an open-source, self-hosted implementation of the Tailscale control server. It allows you to create your own private mesh network without relying on Tailscale's infrastructure, giving you complete control over your network.
+
+<Note>
+  Headscale provides the same WireGuard-based mesh networking as Tailscale but is completely self-hosted. This is ideal for organizations requiring full data sovereignty.
+</Note>
+
+## Prerequisites
+
+- Linux server with Docker (recommended) or standalone installation
+- Domain name for Headscale server
+- SSL certificate (Let's Encrypt recommended)
+- PostgreSQL or SQLite for state storage
+
+## Installation
+
+### Docker Installation (Recommended)
+
+Create a `docker-compose.yml` file:
+
+```yaml
+version: '3.8'
+
+services:
+  headscale:
+    image: headscale/headscale:latest
+    container_name: headscale
+    restart: unless-stopped
+    ports:
+      - "8080:8080"  # HTTP
+      - "50443:50443" # gRPC
+    volumes:
+      - ./config:/etc/headscale
+      - ./data:/var/lib/headscale
+    command: serve
+    environment:
+      - TZ=UTC
+
+  headscale-ui:
+    image: ghcr.io/gurucomputing/headscale-ui:latest
+    container_name: headscale-ui
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      - HEADSCALE_URL=http://headscale:8080
+```
+
+### Configuration File
+
+Create `config/config.yaml`:
+
+```yaml
+server_url: https://headscale.example.com
+listen_addr: 0.0.0.0:8080
+metrics_listen_addr: 0.0.0.0:9090
+grpc_listen_addr: 0.0.0.0:50443
+grpc_allow_insecure: false
+
+private_key_path: /var/lib/headscale/private.key
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
+
+ip_prefixes:
+  - 100.64.0.0/10
+
+derp:
+  server:
+    enabled: true
+    region_id: 999
+    region_code: "headscale"
+    region_name: "Headscale DERP"
+    stun_listen_addr: "0.0.0.0:3478"
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
+  auto_update_enabled: true
+  update_frequency: 24h
+
+database:
+  type: sqlite3
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+
+acme_url: https://acme-v02.api.letsencrypt.org/directory
+acme_email: admin@example.com
+
+tls_cert_path: ""
+tls_key_path: ""
+
+log:
+  level: info
+  format: text
+
+dns_config:
+  nameservers:
+    - 1.1.1.1
+    - 8.8.8.8
+  magic_dns: true
+  base_domain: headscale.local
+```
+
+### Start Headscale
+
+```bash
+docker-compose up -d
+```
+
+### Create First User
+
+```bash
+docker exec headscale headscale users create default
+```
+
+## Nexus Access Vault Integration
+
+### Database Schema
+
+Headscale instances are stored in the `headscale_instances` table:
+
+```sql
+CREATE TABLE headscale_instances (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL,
+  name TEXT NOT NULL,
+  api_endpoint TEXT NOT NULL,
+  api_key TEXT NOT NULL, -- encrypted
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+Nodes (devices) are tracked in `headscale_nodes`:
+
+```sql
+CREATE TABLE headscale_nodes (
+  id UUID PRIMARY KEY,
+  headscale_instance_id UUID NOT NULL,
+  node_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  user_email TEXT,
+  ip_address TEXT,
+  status TEXT DEFAULT 'offline',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### Portal Configuration
+
+The Headscale management page is located at `src/pages/Headscale.tsx`.
+
+#### Adding a Headscale Instance
+
+```typescript
+const { error } = await supabase
+  .from('headscale_instances')
+  .insert({
+    organization_id: profile.organization_id,
+    name: 'Production Headscale',
+    api_endpoint: 'https://headscale.example.com',
+    api_key: 'your-api-key',
+  });
+```
+
+#### Creating a Node
+
+```typescript
+const { error } = await supabase
+  .from('headscale_nodes')
+  .insert({
+    headscale_instance_id: selectedInstance,
+    node_id: `node-${Date.now()}`,
+    name: 'laptop-juan',
+    user_email: 'juan@empresa.com',
+    status: 'offline',
+  });
+```
+
+## Node Enrollment
+
+### Generate Pre-auth Key
+
+```bash
+docker exec headscale headscale preauthkeys create \
+  --user default \
+  --reusable \
+  --expiration 24h
+```
+
+### Client Installation
+
+On the client device:
+
+```bash
+# Install Tailscale client
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# Connect to Headscale
+tailscale up --login-server=https://headscale.example.com \
+  --authkey=<preauth-key>
+```
+
+### Verify Connection
+
+```bash
+# List all nodes
+docker exec headscale headscale nodes list
+
+# Get node details
+docker exec headscale headscale nodes show <node-id>
+```
+
+## Access Control Lists (ACLs)
+
+Configure ACLs to control network access between nodes.
+
+### Example ACL Configuration
+
+```json
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["group:admin"],
+      "dst": ["*:*"]
+    },
+    {
+      "action": "accept",
+      "src": ["group:developers"],
+      "dst": ["tag:dev:*"]
+    },
+    {
+      "action": "accept",
+      "src": ["tag:prod"],
+      "dst": ["tag:sap:22,3389,5432"]
+    }
+  ],
+  "groups": {
+    "group:admin": ["admin@company.com"],
+    "group:developers": ["dev@company.com"]
+  },
+  "tagOwners": {
+    "tag:dev": ["group:admin"],
+    "tag:prod": ["group:admin"],
+    "tag:sap": ["group:admin"]
+  }
+}
+```
+
+### Apply ACL Configuration
+
+```bash
+docker exec headscale headscale acl set /etc/headscale/acl.json
+```
+
+## UI Management
+
+The portal provides a web interface for managing Headscale:
+
+### Features
+
+<CardGroup cols={2}>
+  <Card title="Instance Management" icon="server">
+    Add and manage multiple Headscale instances across organizations
+  </Card>
+  <Card title="Node Creation" icon="laptop">
+    Generate pre-auth keys and register new devices
+  </Card>
+  <Card title="Status Monitoring" icon="signal">
+    Real-time monitoring of node connection status
+  </Card>
+  <Card title="IP Tracking" icon="globe">
+    View assigned IP addresses for all nodes
+  </Card>
+</CardGroup>
+
+### Component Structure
+
+```tsx
+export default function Headscale() {
+  const [instances, setInstances] = useState<HeadscaleInstance[]>([]);
+  const [nodes, setNodes] = useState<HeadscaleNode[]>([]);
+  const [selectedInstance, setSelectedInstance] = useState<string>('');
+
+  // Load instances for organization
+  const loadInstances = async () => {
+    const { data, error } = await supabase
+      .from('headscale_instances')
+      .select('id, name, api_endpoint, created_at')
+      .eq('organization_id', profile.organization_id);
+  };
+
+  // Load nodes for selected instance
+  const loadNodes = async (instanceId: string) => {
+    const { data, error } = await supabase
+      .from('headscale_nodes')
+      .select('*')
+      .eq('headscale_instance_id', instanceId);
+  };
+}
+```
+
+## API Integration
+
+Headscale provides a gRPC and HTTP API for automation.
+
+### Generate API Key
+
+```bash
+docker exec headscale headscale apikeys create \
+  --expiration 90d
+```
+
+### Example API Calls
+
+```bash
+# List nodes
+curl -H "Authorization: Bearer <api-key>" \
+  https://headscale.example.com/api/v1/node
+
+# Create preauth key
+curl -X POST \
+  -H "Authorization: Bearer <api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"user":"default","reusable":true,"ephemeral":false}' \
+  https://headscale.example.com/api/v1/preauthkey
+```
+
+## Nginx Reverse Proxy
+
+Recommended Nginx configuration for Headscale:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name headscale.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/headscale.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/headscale.example.com/privkey.pem;
+
+    # Headscale control plane
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # gRPC endpoint
+    location /grpc {
+        grpc_pass grpc://localhost:50443;
+        grpc_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+## Security Best Practices
+
+<Warning>
+  **Protect API Keys**: Store Headscale API keys securely. Never commit them to version control or expose them in client-side code.
+</Warning>
+
+### Recommendations
+
+1. **Use HTTPS**: Always use SSL/TLS for Headscale server
+2. **API Key Rotation**: Rotate API keys every 90 days
+3. **ACL Enforcement**: Use strict ACLs to limit node communication
+4. **Private Network**: Run Headscale on a private network when possible
+5. **Audit Logs**: Enable logging and monitor for suspicious activity
+6. **Updates**: Keep Headscale updated to latest version
+7. **Backup Database**: Regular backups of SQLite/PostgreSQL database
+
+## Monitoring
+
+### Prometheus Metrics
+
+Headscale exposes Prometheus metrics on port 9090:
+
+```yaml
+scrape_configs:
+  - job_name: 'headscale'
+    static_configs:
+      - targets: ['localhost:9090']
+```
+
+### Health Checks
+
+```bash
+# Check Headscale health
+curl https://headscale.example.com/health
+
+# View active nodes
+docker exec headscale headscale nodes list
+```
+
+## Troubleshooting
+
+### Node Not Connecting
+
+1. Verify Headscale server is reachable:
+   ```bash
+   curl https://headscale.example.com/health
+   ```
+
+2. Check node logs:
+   ```bash
+   tailscale status --json
+   ```
+
+3. Verify pre-auth key hasn't expired:
+   ```bash
+   docker exec headscale headscale preauthkeys list
+   ```
+
+### Database Errors
+
+If using SQLite, check file permissions:
+
+```bash
+ls -la data/db.sqlite
+chmod 644 data/db.sqlite
+```
+
+### gRPC Connection Issues
+
+Verify gRPC port is accessible:
+
+```bash
+telnet headscale.example.com 50443
+```
+
+## Migration from Tailscale
+
+To migrate from Tailscale to Headscale:
+
+1. Export Tailscale node list
+2. Create matching users in Headscale
+3. Generate pre-auth keys for each device
+4. Disconnect devices from Tailscale:
+   ```bash
+   tailscale logout
+   ```
+5. Connect to Headscale:
+   ```bash
+   tailscale up --login-server=https://headscale.example.com
+   ```
+
+## Related Resources
+
+- [Tailscale Integration](/infrastructure/tailscale-integration) - Managed Tailscale service
+- [NetBird Integration](/infrastructure/netbird-integration) - Alternative VPN solution
+- [Cloud Providers](/infrastructure/cloud-providers) - Cloud infrastructure management

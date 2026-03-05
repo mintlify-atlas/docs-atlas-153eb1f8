@@ -1,0 +1,442 @@
+---
+title: 'Session Management'
+description: 'Monitor and control your active connections'
+icon: 'chart-network'
+---
+
+Session Management provides real-time visibility into all your active connections and allows you to monitor, track, and terminate sessions across all resources and devices.
+
+## Overview
+
+The Active Sessions page displays all your current and recent connections to applications and resources. You can view detailed session information, monitor connection status, and end sessions when needed.
+
+**Key Features:**
+- Real-time session monitoring
+- Session status tracking (Active, Idle, Disconnected)
+- Device and location information
+- Session duration tracking
+- Individual session termination
+- Bulk session termination
+- Session statistics dashboard
+
+## Session Dashboard
+
+The top of the page displays key session statistics:
+
+<CardGroup cols={3}>
+  <Card title="Active Sessions" icon="signal" color="#10b981">
+    Number of currently active connections with ongoing activity
+  </Card>
+  <Card title="Idle Sessions" icon="clock" color="#f59e0b">
+    Sessions connected but with no recent activity
+  </Card>
+  <Card title="Total Duration" icon="hourglass" color="#3b82f6">
+    Combined duration of all active sessions
+  </Card>
+</CardGroup>
+
+**Implementation:** `src/pages/Sessions.tsx:168`
+
+```tsx
+const stats = {
+  active: sessions.filter(s => s.status === 'active').length,
+  idle: sessions.filter(s => s.status === 'idle').length,
+  totalDuration: '4h 07m'
+};
+```
+
+## Session Information
+
+Each session in the table displays:
+
+### Resource Details
+- **Resource Name**: The application or resource being accessed
+- **Resource Type**: RDP, SSH, or Web application
+- **Icon**: Visual indicator of the resource type
+
+### Connection Information
+- **Device**: Name of the device accessing the resource
+- **IP Address**: Network address of the connection
+- **Location**: Geographic location (e.g., "Mexico City, MX")
+
+### Timing Information
+- **Duration**: How long the session has been active (e.g., "2h 30m")
+- **Start Time**: When the session was initiated
+
+### Session Status
+Real-time status with visual badges:
+
+<Tabs>
+  <Tab title="Active">
+    **Badge:** Green with Wi-Fi icon
+    
+    The session is currently active with ongoing data transfer.
+    
+    ```tsx
+    <Badge variant="outline" className="badge-success">
+      <Wifi className="h-3 w-3 mr-1" />
+      Active
+    </Badge>
+    ```
+  </Tab>
+  <Tab title="Idle">
+    **Badge:** Yellow with Clock icon
+    
+    The session is connected but has no recent activity. May be automatically terminated after idle timeout.
+    
+    ```tsx
+    <Badge variant="outline" className="badge-warning">
+      <Clock className="h-3 w-3 mr-1" />
+      Idle
+    </Badge>
+    ```
+  </Tab>
+  <Tab title="Disconnected">
+    **Badge:** Red with Wi-Fi Off icon
+    
+    The session has been terminated and is no longer active.
+    
+    ```tsx
+    <Badge variant="outline" className="badge-error">
+      <WifiOff className="h-3 w-3 mr-1" />
+      Disconnected
+    </Badge>
+    ```
+  </Tab>
+</Tabs>
+
+## Session Table
+
+All sessions are displayed in a sortable table:
+
+**Columns:**
+1. **Resource** - Application name and type
+2. **Device** - Device name and IP address
+3. **Duration** - Session length and start time
+4. **Location** - Geographic location
+5. **Status** - Current session state
+6. **Actions** - Session controls
+
+**Source:** `src/pages/Sessions.tsx:206`
+
+```tsx
+<Table>
+  <TableHeader>
+    <TableRow>
+      <TableHead>Resource</TableHead>
+      <TableHead>Device</TableHead>
+      <TableHead>Duration</TableHead>
+      <TableHead>Location</TableHead>
+      <TableHead>Status</TableHead>
+      <TableHead className="w-[80px]">Actions</TableHead>
+    </TableRow>
+  </TableHeader>
+  <TableBody>
+    {sessions.map((session) => (
+      <TableRow key={session.id}>
+        {/* Session data */}
+      </TableRow>
+    ))}
+  </TableBody>
+</Table>
+```
+
+## Terminating Sessions
+
+### End Single Session
+
+To terminate an individual session:
+
+1. Locate the session in the table
+2. Click the **X** button in the Actions column
+3. Confirm the termination in the dialog
+
+<Warning>
+  **Data Loss Warning**  
+  Ending a session may result in loss of unsaved work. Save your work before terminating sessions.
+</Warning>
+
+**UI Flow:**
+```tsx
+// From Sessions.tsx:260
+<Button 
+  variant="ghost" 
+  size="sm"
+  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+  onClick={() => setSelectedSession(session)}
+>
+  <X className="h-4 w-4" />
+</Button>
+```
+
+### End All Sessions
+
+To terminate all active and idle sessions at once:
+
+1. Click **End All Sessions** in the header
+2. Review the number of sessions to be terminated
+3. Confirm the bulk termination
+
+**Use Cases:**
+- Emergency security response
+- End of work day cleanup
+- Switching to different device
+- Troubleshooting connection issues
+
+```tsx
+// From Sessions.tsx:156
+<Button 
+  variant="destructive" 
+  className="gap-2"
+  onClick={() => setShowTerminateAll(true)}
+  disabled={activeSessions.length === 0}
+>
+  <X className="h-4 w-4" />
+  End All Sessions
+</Button>
+```
+
+**Confirmation Dialog:**
+```tsx
+<AlertDialog open={showTerminateAll} onOpenChange={setShowTerminateAll}>
+  <AlertDialogContent>
+    <AlertDialogTitle className="flex items-center gap-2">
+      <AlertTriangle className="h-5 w-5 text-warning" />
+      End All Sessions
+    </AlertDialogTitle>
+    <AlertDialogDescription>
+      This will immediately terminate all {activeSessions.length} active sessions. 
+      Any unsaved work may be lost. Are you sure you want to continue?
+    </AlertDialogDescription>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+## Session Refresh
+
+Click the **Refresh** button to update session information in real-time:
+
+```tsx
+<Button variant="outline" className="gap-2">
+  <RefreshCw className="h-4 w-4" />
+  Refresh
+</Button>
+```
+
+This updates:
+- Session status
+- Duration counters
+- Last seen timestamps
+- Connection statistics
+
+## Resource Type Icons
+
+Sessions are visually identified by resource type:
+
+```tsx
+// From Sessions.tsx:103
+const getResourceIcon = (type: string) => {
+  switch (type) {
+    case 'rdp':
+      return Monitor;
+    case 'ssh':
+      return Terminal;
+    default:
+      return Globe;
+  }
+};
+```
+
+<CardGroup cols={3}>
+  <Card title="RDP Sessions" icon="desktop">
+    Remote Desktop Protocol connections to Windows machines
+  </Card>
+  <Card title="SSH Sessions" icon="terminal">
+    Secure Shell connections to Linux/Unix servers
+  </Card>
+  <Card title="Web Sessions" icon="globe">
+    Browser-based application access
+  </Card>
+</CardGroup>
+
+## Session Data Model
+
+```tsx
+interface Session {
+  id: string;
+  resourceName: string;      // Application/resource name
+  resourceType: string;       // rdp, ssh, web
+  startTime: string;         // ISO 8601 timestamp
+  duration: string;          // Human-readable duration
+  status: 'active' | 'idle' | 'disconnected';
+  device: string;            // Device name
+  location: string;          // Geographic location
+  ipAddress: string;         // Connection IP
+}
+```
+
+## Session States
+
+### Active State
+
+**Characteristics:**
+- Ongoing data transfer
+- User actively interacting with resource
+- Full performance
+- No timeout warnings
+
+**Transitions to Idle:**
+- No activity for configured idle timeout
+- User switches away from session
+- Network latency detected
+
+### Idle State
+
+**Characteristics:**
+- Connection maintained
+- No recent user activity
+- May have reduced performance
+- Subject to idle timeout policies
+
+**Automatic Actions:**
+- Warning notifications after 10 minutes
+- Auto-disconnect after 30 minutes (configurable)
+- Resource release for other users
+
+**Transitions to Active:**
+- User resumes interaction
+- Data transfer detected
+- Explicit session refresh
+
+### Disconnected State
+
+**Characteristics:**
+- Session terminated
+- Resources released
+- Historical record maintained
+- Cannot be resumed
+
+**Causes:**
+- User-initiated termination
+- Idle timeout exceeded
+- Network connection lost
+- Policy-based termination
+- Administrator intervention
+
+## Duration Tracking
+
+Session duration is calculated from start time:
+
+```tsx
+// Example durations
+const sessions = [
+  {
+    startTime: new Date(Date.now() - 3600000 * 2.5).toISOString(),
+    duration: '2h 30m'
+  },
+  {
+    startTime: new Date(Date.now() - 3600000 * 1).toISOString(),
+    duration: '1h 05m'
+  },
+  {
+    startTime: new Date(Date.now() - 3600000 * 0.5).toISOString(),
+    duration: '32m'
+  }
+];
+```
+
+Duration formats:
+- Minutes: "32m"
+- Hours and minutes: "2h 30m"
+- Days (long sessions): "2d 4h"
+
+## Location Tracking
+
+Each session displays geographic location with map pin icon:
+
+```tsx
+<div className="flex items-center gap-1.5 text-sm">
+  <MapPin className="h-3 w-3 text-muted-foreground" />
+  {session.location}
+</div>
+```
+
+**Location Data Sources:**
+- IP geolocation
+- Device GPS (mobile)
+- User profile settings
+- VPN endpoint location
+
+## Session Security
+
+<CardGroup cols={2}>
+  <Card title="Anomaly Detection" icon="shield-exclamation">
+    Sessions from unusual locations or devices are flagged for review
+  </Card>
+  <Card title="Concurrent Session Limits" icon="users-slash">
+    Policies can limit the number of simultaneous sessions per user
+  </Card>
+  <Card title="Idle Timeout Enforcement" icon="clock-rotate-left">
+    Automatic termination of inactive sessions to reduce attack surface
+  </Card>
+  <Card title="Session Recording" icon="video">
+    Optional recording of RDP and SSH sessions for compliance and audit
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<Steps>
+  <Step title="Monitor Active Sessions Regularly">
+    Check your sessions page daily to ensure all connections are recognized and authorized
+  </Step>
+  <Step title="End Sessions When Done">
+    Manually terminate sessions when finished to free up resources and improve security
+  </Step>
+  <Step title="Review Session History">
+    Look for disconnected sessions from unfamiliar locations or devices
+  </Step>
+  <Step title="Use End All Sessions">
+    When leaving work or switching devices, use bulk termination for clean logout
+  </Step>
+  <Step title="Report Suspicious Sessions">
+    If you see a session you didn't initiate, end it immediately and contact security
+  </Step>
+</Steps>
+
+## Idle Session Management
+
+<Accordion title="Why do sessions go idle?">
+  Sessions transition to idle state when:
+  - No keyboard or mouse activity detected
+  - No network traffic for configured period
+  - Browser tab backgrounded for extended time
+  - User switches to different application
+</Accordion>
+
+<Accordion title="What happens to idle sessions?">
+  Idle sessions may:
+  - Show warning notification after 10 minutes
+  - Pause resource consumption
+  - Be automatically terminated after timeout period
+  - Maintain connection but reduce performance
+</Accordion>
+
+<Accordion title="How to prevent idle timeout?">
+  Keep sessions active by:
+  - Regularly interacting with the resource
+  - Keeping the browser tab active
+  - Configuring longer idle timeout in user settings
+  - Using keep-alive scripts (for SSH)
+</Accordion>
+
+## Empty State
+
+If you have no active sessions, you'll see an empty state message. This is normal when you're not currently connected to any resources.
+
+## Related Features
+
+- [Application Management](/features/application-management) - Launch sessions to applications
+- [Device Management](/features/device-management) - View sessions by device
+- [Audit Logging](/features/audit-logging) - Session events are recorded in audit logs
+- [Policies](/features/policies) - Session policies control timeouts and limits

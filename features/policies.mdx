@@ -1,0 +1,607 @@
+---
+title: 'Policies'
+description: 'Configure Zero Trust access policies'
+icon: 'shield-halved'
+---
+
+Policies enable Zero Trust security by defining granular access control rules based on user identity, device trust, network location, and other contextual factors. Administrators can create policies that automatically grant or deny access to resources.
+
+## Overview
+
+The Policies page provides a comprehensive interface for creating, managing, and monitoring Zero Trust access policies within your organization. Policies are evaluated in real-time for every access request.
+
+**Key Features:**
+- Zero Trust policy engine
+- Multiple policy types (Access, Device, Network, Authentication)
+- Condition-based rules
+- Active/Inactive/Draft status management
+- Real-time policy enforcement
+- Impact tracking (users affected)
+- Policy search and filtering
+
+<Note>
+  **Permission Required:** Policy management requires `org_admin` or `global_admin` role.
+</Note>
+
+## Policy Types
+
+Nexus Access Vault supports four types of policies:
+
+<Tabs>
+  <Tab title="Access Policies">
+    **Icon:** Server (Blue)
+    
+    Control who can access specific resources and applications.
+    
+    **Example Conditions:**
+    - User must be in specific group
+    - Resource must be accessed during business hours
+    - Session must be approved by manager
+    - Multi-factor authentication required
+  </Tab>
+  <Tab title="Device Policies">
+    **Icon:** Laptop (Green)
+    
+    Enforce device security requirements.
+    
+    **Example Conditions:**
+    - Device trust level must be High
+    - Operating system must be up-to-date
+    - Antivirus must be active
+    - Disk encryption required
+  </Tab>
+  <Tab title="Network Policies">
+    **Icon:** Globe (Info Blue)
+    
+    Control access based on network conditions.
+    
+    **Example Conditions:**
+    - Must be on corporate VPN
+    - IP address must be in allowed range
+    - Must not be on public Wi-Fi
+    - Geographic location restrictions
+  </Tab>
+  <Tab title="Authentication Policies">
+    **Icon:** Lock (Yellow)
+    
+    Define authentication requirements.
+    
+    **Example Conditions:**
+    - Require MFA for external access
+    - Biometric authentication required
+    - Password age limits
+    - Session timeout periods
+  </Tab>
+</Tabs>
+
+### Type Icons and Colors
+
+```tsx
+// From Policies.tsx:142
+const getTypeIcon = (type: string) => {
+  switch (type) {
+    case 'access': return Server;
+    case 'device': return Laptop2;
+    case 'network': return Globe;
+    case 'authentication': return Lock;
+    default: return Shield;
+  }
+};
+
+const getTypeColor = (type: string) => {
+  switch (type) {
+    case 'access': return 'text-primary';
+    case 'device': return 'text-success';
+    case 'network': return 'text-info';
+    case 'authentication': return 'text-warning';
+    default: return 'text-muted-foreground';
+  }
+};
+```
+
+## Policy Status
+
+### Status Types
+
+Policies can be in one of three states:
+
+<CardGroup cols={3}>
+  <Card title="Active" icon="toggle-on" color="#10b981">
+    Policy is currently enforced and affecting access decisions
+  </Card>
+  <Card title="Inactive" icon="toggle-off" color="#f59e0b">
+    Policy exists but is not being enforced
+  </Card>
+  <Card title="Draft" icon="file-pen" color="#6b7280">
+    Policy is being configured and not yet enforced
+  </Card>
+</CardGroup>
+
+### Status Badges
+
+```tsx
+// From Policies.tsx:162
+const getStatusBadge = (status: string) => {
+  switch (status) {
+    case 'active':
+      return <Badge variant="outline" className="badge-success">Activo</Badge>;
+    case 'inactive':
+      return <Badge variant="outline" className="badge-warning">Inactivo</Badge>;
+    case 'draft':
+      return <Badge variant="outline">Borrador</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
+};
+```
+
+## Policy Dashboard
+
+The top of the page displays policy statistics:
+
+**Stats Cards:**
+
+<CardGroup cols={4}>
+  <Card title="Total Policies" icon="shield">
+    Total number of policies in the organization
+  </Card>
+  <Card title="Active Policies" icon="toggle-on" color="#10b981">
+    Policies currently being enforced
+  </Card>
+  <Card title="Inactive Policies" icon="toggle-off" color="#6b7280">
+    Policies that exist but aren't enforced
+  </Card>
+  <Card title="Draft Policies" icon="triangle-exclamation" color="#f59e0b">
+    Policies still being configured
+  </Card>
+</CardGroup>
+
+**Implementation:** `src/pages/Policies.tsx:203`
+
+```tsx
+const stats = {
+  total: policies.length,
+  active: policies.filter(p => p.status === 'active').length,
+  inactive: policies.filter(p => p.status === 'inactive').length,
+  draft: policies.filter(p => p.status === 'draft').length,
+};
+```
+
+## Creating Policies
+
+### Create New Policy
+
+Administrators can create policies using the CreatePolicyDialog:
+
+1. Click **Create Policy** button
+2. Enter policy details:
+   - **Policy Name** - Descriptive name
+   - **Policy Type** - Access, Device, Network, or Authentication
+   - **Description** - Purpose and scope
+   - **Conditions** - Rules that must be met
+   - **Initial Status** - Draft, Inactive, or Active
+3. Submit to create the policy
+
+**UI Component:** `CreatePolicyDialog`  
+**Source:** `src/pages/Policies.tsx:199`
+
+```tsx
+{isAdmin && <CreatePolicyDialog onCreated={loadPolicies} />}
+```
+
+### Policy Data Model
+
+```tsx
+interface Policy {
+  id: string;                  // Unique identifier
+  name: string;               // Policy name
+  description: string | null;  // Optional description
+  policy_type: string;        // access, device, network, authentication
+  status: string;             // active, inactive, draft
+  conditions: string[];       // Array of condition rules
+  applies_to: number;         // Number of affected users/resources
+  created_at: string;         // Creation timestamp
+}
+```
+
+## Policy Conditions
+
+Conditions define the rules that must be met for policy enforcement:
+
+### Condition Examples
+
+<AccordionGroup>
+  <Accordion title="User-Based Conditions">
+    - User must be member of "Administrators" group
+    - User role must be "org_admin"
+    - User must have completed security training
+    - User must have manager approval
+  </Accordion>
+  
+  <Accordion title="Device-Based Conditions">
+    - Device trust level >= Medium
+    - Device OS version >= 10.0
+    - Device must be corporate-managed
+    - Device encryption enabled
+  </Accordion>
+  
+  <Accordion title="Time-Based Conditions">
+    - Access only during business hours (9 AM - 5 PM)
+    - Access only on weekdays
+    - Session timeout after 8 hours
+    - Maximum session duration: 12 hours
+  </Accordion>
+  
+  <Accordion title="Location-Based Conditions">
+    - Must be in allowed countries: US, CA, UK
+    - Must not be in restricted countries
+    - Must be on corporate network
+    - IP must match office ranges
+  </Accordion>
+</AccordionGroup>
+
+### Condition Display
+
+Conditions are displayed as badges on policy cards:
+
+```tsx
+// From Policies.tsx:296
+<div className="flex flex-wrap gap-2">
+  {policy.conditions.map((condition, i) => (
+    <Badge key={i} variant="secondary" className="text-xs">
+      {condition}
+    </Badge>
+  ))}
+</div>
+```
+
+## Managing Policies
+
+### Toggle Policy Status
+
+Quickly enable or disable policies with the status switch:
+
+```tsx
+// From Policies.tsx:88
+const handleStatusToggle = async (policy: Policy) => {
+  if (policy.status === 'draft') return;  // Cannot toggle draft policies
+
+  const newStatus = policy.status === 'active' ? 'inactive' : 'active';
+
+  try {
+    const { error } = await supabase
+      .from('policies')
+      .update({ status: newStatus })
+      .eq('id', policy.id);
+
+    if (error) throw error;
+
+    toast({
+      title: 'Estado actualizado',
+      description: `La política ahora está ${newStatus === 'active' ? 'activa' : 'inactiva'}`,
+    });
+
+    loadPolicies();
+  } catch (error: any) {
+    toast({
+      title: 'Error',
+      description: error.message,
+      variant: 'destructive',
+    });
+  }
+};
+```
+
+<Warning>
+  **Draft Policy Limitation:** Draft policies cannot be toggled. You must first publish them before activating.
+</Warning>
+
+### Policy Impact Indicator
+
+Each policy shows how many users or resources it affects:
+
+```tsx
+// From Policies.tsx:306
+{policy.status !== 'draft' && (
+  <div className="text-right">
+    <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      <Users className="h-3.5 w-3.5" />
+      <span>{policy.applies_to} afectados</span>
+    </div>
+  </div>
+)}
+```
+
+**Note:** Impact is not calculated for draft policies.
+
+### Editing Policies
+
+Click the settings icon to edit a policy (admin only):
+
+```tsx
+<Button variant="ghost" size="icon">
+  <Settings className="h-4 w-4" />
+</Button>
+```
+
+### Deleting Policies
+
+<Warning>
+  **Important:** Deleting a policy immediately removes its enforcement. Users who were denied access by the policy will gain access, and users who were granted access will lose it.
+</Warning>
+
+To delete a policy:
+
+1. Click the delete icon (trash) on policy card
+2. Confirm the deletion
+3. Policy is permanently removed
+4. Policy enforcement stops immediately
+
+```tsx
+// From Policies.tsx:116
+const handleDelete = async (policy: Policy) => {
+  if (!confirm(`¿Eliminar la política "${policy.name}"?`)) return;
+
+  try {
+    const { error } = await supabase
+      .from('policies')
+      .delete()
+      .eq('id', policy.id);
+
+    if (error) throw error;
+
+    toast({
+      title: 'Política eliminada',
+      description: `${policy.name} ha sido eliminada`,
+    });
+
+    loadPolicies();
+  } catch (error: any) {
+    toast({
+      title: 'Error',
+      description: error.message,
+      variant: 'destructive',
+    });
+  }
+};
+```
+
+## Search and Filter
+
+Use the search bar to filter policies by name or description:
+
+```tsx
+// From Policies.tsx:175
+const filteredPolicies = policies.filter(p =>
+  p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  (p.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
+);
+```
+
+**Search UI:**
+```tsx
+<div className="relative flex-1 max-w-md">
+  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+  <Input 
+    placeholder="Buscar políticas..." 
+    className="pl-9 bg-secondary/50"
+    value={searchQuery}
+    onChange={(e) => setSearchQuery(e.target.value)}
+  />
+</div>
+```
+
+## Policy Cards
+
+Policies are displayed as detailed cards:
+
+<Frame>
+  <div style={{background: '#1e293b', padding: '1.5rem', borderRadius: '0.5rem'}}>
+    <div style={{display: 'flex', gap: '1rem', alignItems: 'start'}}>
+      <div style={{width: '48px', height: '48px', background: '#334155', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+        <span style={{fontSize: '1.5rem'}}>🖥️</span>
+      </div>
+      <div style={{flex: 1}}>
+        <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem'}}>
+          <h3 style={{fontSize: '1rem', fontWeight: 500}}>High Trust Device Required</h3>
+          <span style={{background: '#10b98120', color: '#10b981', padding: '0.125rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.75rem', border: '1px solid #10b98140'}}>Activo</span>
+        </div>
+        <p style={{fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.75rem'}}>Only devices with high trust level can access production resources</p>
+        <div style={{display: 'flex', gap: '0.5rem', flexWrap: 'wrap'}}>
+          <span style={{background: '#334155', padding: '0.25rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.75rem'}}>trust_level >= high</span>
+          <span style={{background: '#334155', padding: '0.25rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.75rem'}}>resource_type == production</span>
+        </div>
+      </div>
+      <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+        <span style={{fontSize: '0.875rem', color: '#94a3b8'}}>👥 24 afectados</span>
+        <div style={{width: '44px', height: '24px', background: '#10b981', borderRadius: '12px'}}></div>
+      </div>
+    </div>
+  </div>
+</Frame>
+
+**Implementation:** `src/pages/Policies.tsx:276`
+
+```tsx
+<Card key={policy.id} className="portal-card card-hover">
+  <CardContent className="p-5">
+    <div className="flex items-start gap-4">
+      <div className={`h-12 w-12 rounded-lg bg-secondary flex items-center justify-center ${
+        getTypeColor(policy.policy_type)
+      }`}>
+        <Icon className="h-6 w-6" />
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="font-medium">{policy.name}</h3>
+          {getStatusBadge(policy.status)}
+        </div>
+        <p className="text-sm text-muted-foreground mb-3">
+          {policy.description || 'Sin descripción'}
+        </p>
+        
+        <div className="flex flex-wrap gap-2">
+          {policy.conditions.map((condition, i) => (
+            <Badge key={i} variant="secondary" className="text-xs">
+              {condition}
+            </Badge>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4">
+        {policy.status !== 'draft' && (
+          <div className="text-right">
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Users className="h-3.5 w-3.5" />
+              <span>{policy.applies_to} afectados</span>
+            </div>
+          </div>
+        )}
+        <Switch 
+          checked={policy.status === 'active'} 
+          disabled={policy.status === 'draft'}
+          onCheckedChange={() => handleStatusToggle(policy)}
+        />
+        {isAdmin && (
+          <>
+            <Button variant="ghost" size="icon">
+              <Settings className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => handleDelete(policy)}
+              className="text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  </CardContent>
+</Card>
+```
+
+## Policy Evaluation
+
+When a user attempts to access a resource:
+
+<Steps>
+  <Step title="Access Request Initiated">
+    User clicks to launch an application or resource
+  </Step>
+  <Step title="Active Policies Retrieved">
+    System loads all active policies for the organization
+  </Step>
+  <Step title="Conditions Evaluated">
+    Each policy's conditions are checked against current context:
+    - User attributes (role, groups, profile)
+    - Device attributes (trust level, OS, location)
+    - Network attributes (IP, VPN status, location)
+    - Time attributes (current time, day of week)
+  </Step>
+  <Step title="Policy Decision">
+    - If all conditions are met: Access granted
+    - If any condition fails: Access denied
+    - Multiple policies are combined with AND logic
+  </Step>
+  <Step title="Audit Logged">
+    Access decision is recorded in audit log with:
+    - User identity
+    - Resource requested
+    - Policies evaluated
+    - Decision outcome
+    - Timestamp
+  </Step>
+</Steps>
+
+## Empty States
+
+### No Policies
+
+If no policies exist in the organization:
+
+```tsx
+// From Policies.tsx:264
+<Card className="glass">
+  <CardContent className="py-12 text-center">
+    <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+    <p className="text-muted-foreground">
+      {policies.length === 0 
+        ? 'No hay políticas creadas' 
+        : 'No se encontraron políticas con ese criterio'}
+    </p>
+  </CardContent>
+</Card>
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Start with Draft" icon="file-pen">
+    Create policies in draft status first, test thoroughly, then activate
+  </Card>
+  <Card title="Clear Naming" icon="tag">
+    Use descriptive names that explain what the policy does (e.g., "Require MFA for External Access")
+  </Card>
+  <Card title="Document Conditions" icon="book">
+    Always fill in the description field to explain why the policy exists
+  </Card>
+  <Card title="Monitor Impact" icon="eye">
+    Check the "applies to" count to understand policy scope before activating
+  </Card>
+  <Card title="Test Before Production" icon="flask">
+    Test policies with a small user group before rolling out organization-wide
+  </Card>
+  <Card title="Regular Review" icon="rotate">
+    Audit policies quarterly to ensure they're still relevant and effective
+  </Card>
+</CardGroup>
+
+## Common Policy Patterns
+
+<Accordion title="Require MFA for External Access">
+  **Type:** Authentication  
+  **Conditions:**
+  - Network location != corporate network
+  - User must complete MFA challenge
+  
+  **Use Case:** Enforce additional security when users access from outside the office
+</Accordion>
+
+<Accordion title="High Trust Devices Only for Production">
+  **Type:** Device  
+  **Conditions:**
+  - Device trust level == high
+  - Resource environment == production
+  
+  **Use Case:** Ensure only secure, verified devices can access production systems
+</Accordion>
+
+<Accordion title="Business Hours Access Only">
+  **Type:** Access  
+  **Conditions:**
+  - Current time between 09:00 and 17:00
+  - Day of week: Monday-Friday
+  
+  **Use Case:** Limit access to sensitive resources during business hours only
+</Accordion>
+
+<Accordion title="Admin Group Required">
+  **Type:** Access  
+  **Conditions:**
+  - User member of "Administrators" group
+  - Resource type == admin_tool
+  
+  **Use Case:** Restrict administrative tools to authorized personnel
+</Accordion>
+
+## Related Features
+
+- [User Groups](/features/user-groups) - Policies can target specific groups
+- [Device Management](/features/device-management) - Device trust levels feed into policy evaluation
+- [Application Management](/features/application-management) - Policies control application access
+- [Audit Logging](/features/audit-logging) - Policy decisions are logged for compliance

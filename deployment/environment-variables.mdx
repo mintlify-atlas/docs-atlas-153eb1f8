@@ -1,0 +1,361 @@
+---
+title: "Environment Variables"
+description: "Complete reference for all environment variables in Nexus Access Vault"
+icon: "gear"
+---
+
+## Overview
+
+Nexus Access Vault uses environment variables for configuration. All variables are defined in the `.env` file at the root of your project. Copy `.env.example` to `.env` and configure the values for your deployment.
+
+```bash
+cp .env.example .env
+```
+
+## Variable Categories
+
+<CardGroup cols={3}>
+  <Card title="Supabase" icon="database">
+    Database and authentication backend
+  </Card>
+  <Card title="Zitadel" icon="shield-check">
+    OIDC authentication provider
+  </Card>
+  <Card title="Network" icon="network-wired">
+    Network access and isolation
+  </Card>
+</CardGroup>
+
+## Supabase Configuration
+
+These variables configure the connection to your Supabase backend.
+
+### VITE_SUPABASE_PROJECT_ID
+
+<ParamField path="VITE_SUPABASE_PROJECT_ID" type="string" required>
+  Your Supabase project ID. Find this in your Supabase project settings.
+
+  **Example:**
+  ```bash
+  VITE_SUPABASE_PROJECT_ID="vbuwctubivhffkvhqwpp"
+  ```
+
+  <Note>
+    The project ID is visible in your Supabase project URL: `https://app.supabase.com/project/[PROJECT_ID]`
+  </Note>
+</ParamField>
+
+### VITE_SUPABASE_PUBLISHABLE_KEY
+
+<ParamField path="VITE_SUPABASE_PUBLISHABLE_KEY" type="string" required>
+  Your Supabase anon/public API key. This key is safe to use in a browser.
+
+  **Example:**
+  ```bash
+  VITE_SUPABASE_PUBLISHABLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  ```
+
+  <Note>
+    Find this in your Supabase project settings under **API** → **Project API keys** → **anon public**
+  </Note>
+</ParamField>
+
+### VITE_SUPABASE_URL
+
+<ParamField path="VITE_SUPABASE_URL" type="string" required>
+  The full URL to your Supabase project API endpoint.
+
+  **Example:**
+  ```bash
+  VITE_SUPABASE_URL="https://vbuwctubivhffkvhqwpp.supabase.co"
+  ```
+
+  <Note>
+    Find this in your Supabase project settings under **API** → **Project URL**
+  </Note>
+</ParamField>
+
+## Zitadel OIDC Configuration
+
+These variables configure authentication using Zitadel as the OIDC provider.
+
+<Info>
+  Before configuring these variables, you must create an OIDC application in your Zitadel instance. See [Zitadel OIDC Setup](/authentication/zitadel-setup) for detailed instructions.
+</Info>
+
+### VITE_ZITADEL_ISSUER_URL
+
+<ParamField path="VITE_ZITADEL_ISSUER_URL" type="string" required>
+  The base URL of your Zitadel instance. This is used for OIDC discovery.
+
+  **Example:**
+  ```bash
+  VITE_ZITADEL_ISSUER_URL="https://manager.kappa4.com"
+  ```
+
+  <Warning>
+    The issuer URL must be accessible from both the server and client browsers. Do not include trailing slashes.
+  </Warning>
+</ParamField>
+
+### VITE_ZITADEL_CLIENT_ID
+
+<ParamField path="VITE_ZITADEL_CLIENT_ID" type="string" required>
+  The client ID of your OIDC application in Zitadel.
+
+  **Example:**
+  ```bash
+  VITE_ZITADEL_CLIENT_ID="123456789@nexus-vault"
+  ```
+
+  <Note>
+    This is generated when you create an OIDC application in Zitadel. Find it in your Zitadel project under the application settings.
+  </Note>
+</ParamField>
+
+### VITE_ZITADEL_REDIRECT_URI
+
+<ParamField path="VITE_ZITADEL_REDIRECT_URI" type="string" required>
+  The redirect URI where users will be sent after authentication. This must match the redirect URI configured in your Zitadel application.
+
+  **Examples:**
+
+  Development:
+  ```bash
+  VITE_ZITADEL_REDIRECT_URI="http://localhost:8080/auth/callback"
+  ```
+
+  Production (VPN):
+  ```bash
+  VITE_ZITADEL_REDIRECT_URI="http://100.64.1.10:8080/auth/callback"
+  ```
+
+  Production (Domain):
+  ```bash
+  VITE_ZITADEL_REDIRECT_URI="https://vault.internal.company.com/auth/callback"
+  ```
+
+  <Warning>
+    The redirect URI must be added to the allowed redirect URIs in your Zitadel application configuration. Mismatched URIs will cause authentication to fail.
+  </Warning>
+</ParamField>
+
+## Network Configuration
+
+These variables control network access and isolation for your deployment.
+
+### VITE_NETWORK_MODE
+
+<ParamField path="VITE_NETWORK_MODE" type="string" default="internal">
+  Controls the network access mode for the application.
+
+  **Values:**
+  - `internal`: Restricts access to internal network only (VPN required)
+  - `public`: Allows public internet access
+
+  **Example:**
+  ```bash
+  VITE_NETWORK_MODE="internal"
+  ```
+
+  <Info>
+    When set to `internal`, the application will enforce VPN-only access. Users must be connected to your Netbird network or VPN to access the portal.
+  </Info>
+</ParamField>
+
+### VITE_INTERNAL_HOST
+
+<ParamField path="VITE_INTERNAL_HOST" type="string" required="when VITE_NETWORK_MODE=internal">
+  The internal IP address or DNS name where the application is accessible on your VPN network.
+
+  **Examples:**
+
+  Using Netbird IP:
+  ```bash
+  VITE_INTERNAL_HOST="100.64.1.10"
+  ```
+
+  Using internal DNS:
+  ```bash
+  VITE_INTERNAL_HOST="vault.internal.company.com"
+  ```
+
+  <Note>
+    This should be the IP or hostname assigned by your VPN solution (Netbird, Tailscale, WireGuard, etc.)
+  </Note>
+</ParamField>
+
+## Complete Configuration Example
+
+Here's a complete example `.env` file with all variables configured:
+
+```bash .env
+# Supabase Configuration
+VITE_SUPABASE_PROJECT_ID="vbuwctubivhffkvhqwpp"
+VITE_SUPABASE_PUBLISHABLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZidXdjdHViaXZoZmZrdmhxd3BwIiwicm9sZSI6ImFub24iLCJpYXQiOjE2OTk1NTU1NTUsImV4cCI6MjAxNTEzMTU1NX0.example"
+VITE_SUPABASE_URL="https://vbuwctubivhffkvhqwpp.supabase.co"
+
+# Zitadel OIDC Configuration
+VITE_ZITADEL_ISSUER_URL="https://manager.kappa4.com"
+VITE_ZITADEL_CLIENT_ID="123456789@nexus-vault"
+VITE_ZITADEL_REDIRECT_URI="http://100.64.1.10:8080/auth/callback"
+
+# Network Configuration
+VITE_NETWORK_MODE="internal"
+VITE_INTERNAL_HOST="100.64.1.10"
+```
+
+## Environment-Specific Configurations
+
+### Development Environment
+
+```bash .env.development
+# Supabase - use your dev project
+VITE_SUPABASE_PROJECT_ID="dev-project-id"
+VITE_SUPABASE_PUBLISHABLE_KEY="dev-anon-key"
+VITE_SUPABASE_URL="https://dev-project.supabase.co"
+
+# Zitadel - use localhost redirect
+VITE_ZITADEL_ISSUER_URL="https://manager.kappa4.com"
+VITE_ZITADEL_CLIENT_ID="dev-client-id"
+VITE_ZITADEL_REDIRECT_URI="http://localhost:8080/auth/callback"
+
+# Network - public access for development
+VITE_NETWORK_MODE="public"
+VITE_INTERNAL_HOST="localhost"
+```
+
+### Production Environment
+
+```bash .env.production
+# Supabase - use your production project
+VITE_SUPABASE_PROJECT_ID="prod-project-id"
+VITE_SUPABASE_PUBLISHABLE_KEY="prod-anon-key"
+VITE_SUPABASE_URL="https://prod-project.supabase.co"
+
+# Zitadel - use VPN IP redirect
+VITE_ZITADEL_ISSUER_URL="https://manager.kappa4.com"
+VITE_ZITADEL_CLIENT_ID="prod-client-id"
+VITE_ZITADEL_REDIRECT_URI="http://100.64.1.10:8080/auth/callback"
+
+# Network - internal only for production
+VITE_NETWORK_MODE="internal"
+VITE_INTERNAL_HOST="100.64.1.10"
+```
+
+## Validation
+
+You can validate your environment configuration by running the development server:
+
+```bash
+npm run dev
+```
+
+The application will fail to start if required variables are missing or invalid.
+
+<Warning>
+  **Never commit `.env` files to version control!** Always use `.env.example` as a template and add `.env` to your `.gitignore` file.
+</Warning>
+
+## Build-Time vs Runtime
+
+All environment variables prefixed with `VITE_` are embedded into the application at build time. This means:
+
+<Info>
+  **Important:** If you change any `VITE_*` variable, you must rebuild the application:
+
+  ```bash
+  npm run build
+  ```
+</Info>
+
+## Security Considerations
+
+<AccordionGroup>
+  <Accordion title="Sensitive Variables">
+    The following variables contain sensitive information:
+    - `VITE_SUPABASE_PUBLISHABLE_KEY` (safe to expose in browser)
+    - Zitadel client secrets (if using confidential clients)
+
+    Never commit these values to version control. Use `.env.example` with placeholder values instead.
+  </Accordion>
+
+  <Accordion title="VITE_ Prefix Exposure">
+    All variables prefixed with `VITE_` are exposed in the browser bundle. This is intentional and safe for:
+    - Public API keys (like Supabase anon key)
+    - OIDC configuration (client ID, issuer URL)
+    - Network configuration
+
+    Never use `VITE_` prefix for truly secret values like service account tokens or private keys.
+  </Accordion>
+
+  <Accordion title="Redirect URI Security">
+    The redirect URI must be an exact match in Zitadel. This prevents authorization code interception attacks.
+
+    Always use:
+    - `https://` in production (except for internal VPN addresses)
+    - Exact protocol, host, port, and path matches
+    - No wildcards in redirect URIs
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Variables not taking effect">
+    If your environment variables aren't being applied:
+
+    1. Ensure you've created `.env` file (not just `.env.example`)
+    2. Rebuild the application: `npm run build`
+    3. Restart the development server: `npm run dev`
+    4. Check that variables are prefixed with `VITE_`
+    5. Verify no syntax errors in `.env` file
+  </Accordion>
+
+  <Accordion title="Supabase connection fails">
+    If you can't connect to Supabase:
+
+    1. Verify project ID matches your Supabase project
+    2. Check that the anon key hasn't been rotated
+    3. Ensure the URL includes `https://` and `.supabase.co`
+    4. Test the URL in your browser to verify it's accessible
+    5. Check Supabase project status in the dashboard
+  </Accordion>
+
+  <Accordion title="Zitadel authentication fails">
+    If authentication with Zitadel doesn't work:
+
+    1. Verify issuer URL is accessible from your browser
+    2. Check that client ID exactly matches Zitadel application
+    3. Ensure redirect URI is added to allowed URIs in Zitadel
+    4. Verify redirect URI matches exactly (protocol, host, port, path)
+    5. Check browser console for OIDC error messages
+  </Accordion>
+
+  <Accordion title="Network mode not working">
+    If network isolation isn't working:
+
+    1. Verify `VITE_NETWORK_MODE` is set to `internal`
+    2. Check that `VITE_INTERNAL_HOST` matches your VPN IP
+    3. Ensure you're connected to the VPN: `netbird status`
+    4. Rebuild the application after changing variables
+    5. Test access from both inside and outside VPN
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Database Setup" icon="database" href="/deployment/database-setup">
+    Configure and migrate your Supabase database
+  </Card>
+  <Card title="Network Configuration" icon="network-wired" href="/deployment/network-configuration">
+    Set up VPN-only access with Netbird
+  </Card>
+  <Card title="Zitadel OIDC" icon="shield-check" href="/authentication/zitadel-setup">
+    Configure Zitadel authentication
+  </Card>
+  <Card title="Self-Hosted Deployment" icon="server" href="/deployment/self-hosted">
+    Complete deployment guide
+  </Card>
+</CardGroup>

@@ -1,0 +1,596 @@
+---
+title: "Database Setup"
+description: "Set up and migrate your Supabase database for Nexus Access Vault"
+icon: "database"
+---
+
+## Overview
+
+Nexus Access Vault uses Supabase as its database backend. This guide covers setting up your database schema, running migrations, and understanding the database structure.
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Supabase Project" icon="cloud">
+    Active Supabase project with admin access
+  </Card>
+  <Card title="Supabase CLI" icon="terminal">
+    Supabase CLI installed globally
+  </Card>
+</CardGroup>
+
+## Initial Setup
+
+<Steps>
+  <Step title="Install Supabase CLI">
+    Install the Supabase CLI globally using npm:
+
+    ```bash
+    npm install -g supabase
+    ```
+
+    Verify the installation:
+
+    ```bash
+    supabase --version
+    ```
+  </Step>
+
+  <Step title="Link to Your Project">
+    Link your local project to your Supabase project:
+
+    ```bash
+    supabase link --project-ref <your-project-id>
+    ```
+
+    You'll be prompted to enter your database password.
+
+    <Note>
+      Find your project ID in the Supabase dashboard URL: `https://app.supabase.com/project/[PROJECT_ID]`
+    </Note>
+  </Step>
+
+  <Step title="Run Migrations">
+    Apply all database migrations to set up the schema:
+
+    ```bash
+    supabase db push
+    ```
+
+    This will apply all migration files from `supabase/migrations/` in order.
+  </Step>
+
+  <Step title="Verify Setup">
+    Check that the migrations were applied successfully:
+
+    ```bash
+    supabase db status
+    ```
+
+    You should see all migrations listed as applied.
+  </Step>
+</Steps>
+
+## Database Schema
+
+Nexus Access Vault uses a multi-tenant architecture with row-level security (RLS). Here's an overview of the main tables:
+
+### Core Tables
+
+<AccordionGroup>
+  <Accordion title="organizations" icon="building">
+    Stores organization/tenant information.
+
+    **Columns:**
+    - `id` (UUID, PK): Organization identifier
+    - `name` (TEXT): Organization name
+    - `logo_url` (TEXT): Organization logo URL
+    - `created_at` (TIMESTAMPTZ): Creation timestamp
+
+    **RLS Policies:**
+    - Global admins can view all organizations
+    - Users can view their own organization
+    - Global admins can create organizations
+
+    See 20251101064149_c858409a-cae1-4697-937c-7edadf5cc3c1.sql:14-19
+  </Accordion>
+
+  <Accordion title="profiles" icon="user">
+    Extends auth.users with organization and role information.
+
+    **Columns:**
+    - `id` (UUID, PK, FK → auth.users): User identifier
+    - `organization_id` (UUID, FK → organizations): Organization membership
+    - `full_name` (TEXT): User's full name
+    - `role` (user_role enum): User's role
+    - `created_at` (TIMESTAMPTZ): Creation timestamp
+
+    **Roles:**
+    - `global_admin`: Full system access
+    - `org_admin`: Organization administration
+    - `support`: Support role with extended permissions
+    - `user`: Standard user access
+
+    **RLS Policies:**
+    - Users can view their own profile
+    - Users can view profiles in their organization
+    - Org admins can update profiles in their org
+
+    See 20251101064149_c858409a-cae1-4697-937c-7edadf5cc3c1.sql:24-31
+  </Accordion>
+
+  <Accordion title="resources" icon="server">
+    Stores remote access resources (VMs, RDP sessions, etc.).
+
+    **Columns:**
+    - `id` (UUID, PK): Resource identifier
+    - `organization_id` (UUID, FK → organizations): Owner organization
+    - `name` (TEXT): Resource name
+    - `resource_type` (resource_type enum): Type of resource
+    - `ip_address` (TEXT): Resource IP address
+    - `connection_method` (TEXT): Connection method
+    - `metadata` (JSONB): Additional resource metadata
+    - `created_at` (TIMESTAMPTZ): Creation timestamp
+
+    **Resource Types:**
+    - `windows_vm`: Windows virtual machine
+    - `linux_vm`: Linux virtual machine
+    - `rdp`: RDP session
+    - `ssh`: SSH session
+    - `guacamole_session`: Apache Guacamole session
+    - `tsplus_html5`: TSplus HTML5 session
+    - `tailscale_node`: Tailscale network node
+    - `custom`: Custom resource type
+
+    **RLS Policies:**
+    - Users can view resources in their organization
+    - Org admins can manage resources in their org
+
+    See 20251101064149_c858409a-cae1-4697-937c-7edadf5cc3c1.sql:36-46
+  </Accordion>
+
+  <Accordion title="user_resource_access" icon="key">
+    Manages user access permissions to resources.
+
+    **Columns:**
+    - `id` (UUID, PK): Access record identifier
+    - `user_id` (UUID, FK → profiles): User with access
+    - `resource_id` (UUID, FK → resources): Resource being accessed
+    - `status` (access_status enum): Access status
+    - `created_at` (TIMESTAMPTZ): Request timestamp
+    - `activated_at` (TIMESTAMPTZ): Activation timestamp
+    - `revoked_at` (TIMESTAMPTZ): Revocation timestamp
+
+    **Access Status:**
+    - `pending`: Access requested but not yet activated
+    - `active`: Access is currently active
+    - `revoked`: Access has been revoked
+
+    **Constraints:**
+    - UNIQUE(user_id, resource_id): One access record per user-resource pair
+
+    **RLS Policies:**
+    - Users can view their own access
+    - Admins can view all access in their org
+    - Admins can manage access in their org
+
+    See 20251101064149_c858409a-cae1-4697-937c-7edadf5cc3c1.sql:52-61
+  </Accordion>
+
+  <Accordion title="audit_logs" icon="list">
+    Records all important system events for auditing.
+
+    **Columns:**
+    - `id` (UUID, PK): Log entry identifier
+    - `organization_id` (UUID, FK → organizations): Related organization
+    - `user_id` (UUID, FK → profiles): User who triggered the event
+    - `event` (TEXT): Event name/type
+    - `details` (JSONB): Event details
+    - `created_at` (TIMESTAMPTZ): Event timestamp
+
+    **RLS Policies:**
+    - Admins can view audit logs in their org
+    - System can insert audit logs
+
+    See 20251101064149_c858409a-cae1-4697-937c-7edadf5cc3c1.sql:66-74
+  </Accordion>
+</AccordionGroup>
+
+### Authentication Tables
+
+<AccordionGroup>
+  <Accordion title="zitadel_configurations" icon="shield-check">
+    Stores Zitadel OIDC configuration per organization.
+
+    **Columns:**
+    - `id` (UUID, PK): Configuration identifier
+    - `organization_id` (UUID, FK → organizations): Owner organization
+    - `name` (TEXT): Configuration name
+    - `issuer_url` (TEXT): Zitadel issuer URL
+    - `client_id` (TEXT): OIDC client ID
+    - `client_secret` (TEXT): OIDC client secret (encrypted)
+    - `redirect_uri` (TEXT): OAuth redirect URI
+    - `scopes` (TEXT[]): Requested OIDC scopes
+    - `api_token` (TEXT): Zitadel Management API token
+    - `sync_groups` (BOOLEAN): Enable automatic group sync
+    - `is_active` (BOOLEAN): Configuration is active
+    - `created_at` (TIMESTAMPTZ): Creation timestamp
+    - `updated_at` (TIMESTAMPTZ): Last update timestamp
+
+    **Constraints:**
+    - UNIQUE(organization_id, name): One config name per organization
+
+    **RLS Policies:**
+    - Only org admins can manage Zitadel configs
+
+    See 20251224003621_e3a05600-1bc8-4661-9d3a-02ce7fc78348.sql:2-17
+  </Accordion>
+
+  <Accordion title="zitadel_group_mappings" icon="users">
+    Maps Zitadel groups to local groups.
+
+    **Columns:**
+    - `id` (UUID, PK): Mapping identifier
+    - `zitadel_config_id` (UUID, FK → zitadel_configurations): Config reference
+    - `zitadel_group_id` (TEXT): Zitadel group ID
+    - `zitadel_group_name` (TEXT): Zitadel group name
+    - `local_group_id` (UUID, FK → groups): Local group reference
+    - `auto_sync` (BOOLEAN): Enable automatic user assignment
+    - `created_at` (TIMESTAMPTZ): Creation timestamp
+
+    **Constraints:**
+    - UNIQUE(zitadel_config_id, zitadel_group_id): One mapping per Zitadel group
+
+    **RLS Policies:**
+    - Admins can manage group mappings
+
+    See 20251224003621_e3a05600-1bc8-4661-9d3a-02ce7fc78348.sql:30-40
+  </Accordion>
+
+  <Accordion title="user_zitadel_identities" icon="id-card">
+    Links users to their Zitadel identities.
+
+    **Columns:**
+    - `id` (UUID, PK): Identity link identifier
+    - `user_id` (UUID, FK → profiles): Local user
+    - `zitadel_config_id` (UUID, FK → zitadel_configurations): Config used
+    - `zitadel_user_id` (TEXT): Zitadel user subject
+    - `zitadel_groups` (TEXT[]): User's Zitadel groups
+    - `last_synced_at` (TIMESTAMPTZ): Last sync timestamp
+    - `created_at` (TIMESTAMPTZ): Creation timestamp
+
+    **Constraints:**
+    - UNIQUE(user_id, zitadel_config_id): One identity per config per user
+    - UNIQUE(zitadel_config_id, zitadel_user_id): One local user per Zitadel user
+
+    **RLS Policies:**
+    - Users can view their own identity
+    - Admins can manage identities in their org
+
+    See 20251224003621_e3a05600-1bc8-4661-9d3a-02ce7fc78348.sql:56-67
+  </Accordion>
+</AccordionGroup>
+
+## Database Functions
+
+### handle_new_user()
+
+Automatically creates a profile when a new user signs up.
+
+**Trigger:** `on_auth_user_created` (AFTER INSERT on auth.users)
+
+**Functionality:**
+- Extracts user metadata from auth.users
+- Creates corresponding profile record
+- Sets default role to 'user'
+- Preserves full_name from metadata
+
+See 20251101064149_c858409a-cae1-4697-937c-7edadf5cc3c1.sql:80-95
+
+### get_active_sso_configs()
+
+Returns active SSO configurations (safe for public access).
+
+**Returns:**
+- `id`: Configuration ID
+- `name`: Configuration name
+- `issuer_url`: Zitadel issuer URL
+- `organization_id`: Owner organization ID
+
+**Security:** Uses SECURITY DEFINER to safely expose only public fields.
+
+See 20260224100755_41f3fdff-a20b-4128-979a-0138927835ba.sql:5-15
+
+## Migration Files
+
+Migrations are stored in `supabase/migrations/` and are applied in chronological order:
+
+```bash
+supabase/migrations/
+├── 20251101064149_c858409a-cae1-4697-937c-7edadf5cc3c1.sql  # Initial schema
+├── 20251102085331_20632420-8e11-4168-8ed5-344a95e123c1.sql
+├── 20251201100456_f72d0f67-a6cf-40d3-8197-a30854e79630.sql
+├── 20251202042206_401c69c6-d7cb-4c00-9548-e96135c1fcff.sql
+├── 20251202042852_3fa7588c-26f2-4ec3-aaa1-601aac0765cb.sql
+├── 20251220111010_424e828e-ed44-43d5-b1d6-e230842bb7ef.sql
+├── 20251220113706_cff3ca39-284d-4209-a27b-f497edb0cae1.sql
+├── 20251223005117_dffecd6a-72c3-4fbe-9079-32b293974cd2.sql
+├── 20251224003621_e3a05600-1bc8-4661-9d3a-02ce7fc78348.sql  # Zitadel tables
+├── 20251225100123_6be3d1dc-ef80-4ea5-b150-ccc0f11d515c.sql
+├── 20260224100735_c5debb06-26db-4af7-971d-e3631e23f0d1.sql
+└── 20260224100755_41f3fdff-a20b-4128-979a-0138927835ba.sql
+```
+
+## Common Operations
+
+### Create a New Migration
+
+To create a new migration:
+
+```bash
+supabase migration new <migration_name>
+```
+
+This creates a new SQL file in `supabase/migrations/`.
+
+### Apply Migrations
+
+Apply all pending migrations:
+
+```bash
+supabase db push
+```
+
+### Reset Database
+
+<Warning>
+  This will delete ALL data in your database!
+</Warning>
+
+```bash
+supabase db reset
+```
+
+### Rollback Migration
+
+To roll back the last migration:
+
+```bash
+supabase migration rollback
+```
+
+### Dump Database Schema
+
+Export the current schema:
+
+```bash
+supabase db dump -f schema.sql --schema public
+```
+
+### Dump All Data
+
+Export all data:
+
+```bash
+supabase db dump -f backup.sql --data-only
+```
+
+## Initial Data Setup
+
+### Create Initial Organization
+
+After running migrations, create your first organization:
+
+```sql
+INSERT INTO public.organizations (name, logo_url)
+VALUES ('My Company', 'https://example.com/logo.png')
+RETURNING id;
+```
+
+### Create Admin User
+
+Create an admin user (after they sign up through the UI):
+
+```sql
+UPDATE public.profiles
+SET role = 'global_admin',
+    organization_id = '<organization-id>'
+WHERE id = '<user-id>';
+```
+
+### Configure Zitadel OIDC
+
+Insert Zitadel configuration:
+
+```sql
+INSERT INTO public.zitadel_configurations (
+  organization_id,
+  name,
+  issuer_url,
+  client_id,
+  redirect_uri,
+  scopes,
+  sync_groups,
+  is_active
+) VALUES (
+  '<organization-id>',
+  'Kappa4 Manager',
+  'https://manager.kappa4.com',
+  '<client-id>',
+  'http://<your-host>:8080/auth/callback',
+  ARRAY['openid', 'profile', 'email', 'urn:zitadel:iam:org:project:id:zitadel:aud'],
+  true,
+  true
+);
+```
+
+See ZITADEL_NETBIRD_SETUP.md:69-93 for complete setup instructions.
+
+## Row-Level Security (RLS)
+
+All tables use Row-Level Security to ensure data isolation:
+
+<Info>
+  **Multi-Tenant Architecture:** Users can only access data within their own organization. Global admins can access all organizations.
+</Info>
+
+### Key RLS Patterns
+
+1. **Organization-based access:**
+   ```sql
+   organization_id IN (
+     SELECT organization_id FROM profiles WHERE id = auth.uid()
+   )
+   ```
+
+2. **Role-based access:**
+   ```sql
+   EXISTS (
+     SELECT 1 FROM profiles
+     WHERE id = auth.uid()
+     AND role IN ('org_admin', 'global_admin')
+   )
+   ```
+
+3. **Self-access:**
+   ```sql
+   user_id = auth.uid()
+   ```
+
+## Performance Indexes
+
+The schema includes indexes for optimal query performance:
+
+```sql
+CREATE INDEX idx_profiles_organization_id ON profiles(organization_id);
+CREATE INDEX idx_profiles_role ON profiles(role);
+CREATE INDEX idx_resources_organization_id ON resources(organization_id);
+CREATE INDEX idx_user_resource_access_user_id ON user_resource_access(user_id);
+CREATE INDEX idx_user_resource_access_resource_id ON user_resource_access(resource_id);
+CREATE INDEX idx_audit_logs_organization_id ON audit_logs(organization_id);
+CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at DESC);
+```
+
+See 20251101064149_c858409a-cae1-4697-937c-7edadf5cc3c1.sql:235-241
+
+## Database Configuration
+
+The Supabase configuration is stored in `supabase/config.toml`:
+
+```toml
+project_id = "vbuwctubivhffkvhqwpp"
+
+[functions.device-enrollment]
+verify_jwt = false
+
+[functions.session-launcher]
+verify_jwt = true
+
+[functions.tailscale-api]
+verify_jwt = false
+
+[functions.zitadel-api]
+verify_jwt = false
+
+[functions.netbird-proxy]
+verify_jwt = false
+```
+
+See supabase/config.toml:1-17
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Migration fails">
+    If a migration fails:
+
+    1. Check the error message for SQL syntax errors
+    2. Verify all referenced tables exist
+    3. Ensure foreign key constraints are satisfied
+    4. Check that enums are created before use
+    5. Review the migration file for issues
+
+    You may need to fix the migration and run `supabase db reset` to start fresh.
+  </Accordion>
+
+  <Accordion title="RLS policies blocking access">
+    If users can't access data due to RLS:
+
+    1. Check that user has correct role: `SELECT * FROM profiles WHERE id = auth.uid()`
+    2. Verify user is assigned to organization
+    3. Review RLS policies on the table
+    4. Check auth.uid() is returning correct value
+    5. Test policy in SQL Editor: `SELECT * FROM table WHERE <policy-condition>`
+  </Accordion>
+
+  <Accordion title="Foreign key violations">
+    If you get foreign key errors:
+
+    1. Ensure referenced records exist before inserting
+    2. Check that UUIDs match exactly
+    3. Verify cascade rules (ON DELETE CASCADE, etc.)
+    4. Use transactions for multi-table operations
+    5. Check that RLS isn't blocking visibility of referenced rows
+  </Accordion>
+
+  <Accordion title="Connection issues">
+    If you can't connect to the database:
+
+    1. Verify Supabase project is active
+    2. Check database password is correct
+    3. Ensure project ID matches your project
+    4. Test connection: `supabase db ping`
+    5. Check Supabase service status
+  </Accordion>
+</AccordionGroup>
+
+## Backup and Recovery
+
+### Automated Backups
+
+Supabase automatically backs up your database:
+- Point-in-time recovery (PITR) available on Pro plan
+- Daily backups retained for 7 days
+- Access backups through Supabase dashboard
+
+### Manual Backups
+
+Create manual backups:
+
+```bash
+# Full backup (schema + data)
+supabase db dump -f backup-$(date +%Y%m%d).sql
+
+# Schema only
+supabase db dump -f schema.sql --schema public
+
+# Data only
+supabase db dump -f data.sql --data-only
+```
+
+### Restore from Backup
+
+```bash
+# Reset database
+supabase db reset
+
+# Restore from backup
+psql -h db.<project-ref>.supabase.co -U postgres -d postgres -f backup.sql
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="gear" href="/deployment/environment-variables">
+    Configure Supabase connection variables
+  </Card>
+  <Card title="Zitadel OIDC" icon="shield-check" href="/authentication/zitadel-setup">
+    Set up authentication with Zitadel
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/zitadel-api">
+    Explore the database API
+  </Card>
+  <Card title="Self-Hosted Deployment" icon="server" href="/deployment/self-hosted">
+    Complete deployment guide
+  </Card>
+</CardGroup>

@@ -1,0 +1,384 @@
+---
+title: 'Key Features'
+description: 'Comprehensive overview of Nexus Access Vault capabilities and features'
+---
+
+Nexus Access Vault is a Zero Trust access management portal that provides enterprise-grade security, identity federation, and resource access control. Built with modern web technologies and designed for scalability, it offers comprehensive features for managing user access across your organization.
+
+## Authentication & Identity Management
+
+### Multi-Provider SSO Integration
+
+<CardGroup cols={2}>
+  <Card title="Zitadel OIDC Integration" icon="key">
+    Full OpenID Connect support with Zitadel identity provider, enabling centralized authentication and group-based access control.
+  </Card>
+  <Card title="PKCE Security Flow" icon="shield-halved">
+    Implements Proof Key for Code Exchange (S256) for secure authentication without client secrets, protecting against authorization code interception attacks.
+  </Card>
+</CardGroup>
+
+The portal supports enterprise SSO through Zitadel OIDC provider with advanced security features:
+
+- **PKCE Flow**: Uses SHA-256 code challenge method to prevent authorization code interception
+- **State & Nonce Parameters**: Protects against CSRF and replay attacks
+- **Group Synchronization**: Automatically syncs Zitadel groups to local roles at login
+- **Multi-Organization Support**: Configure different SSO providers per organization
+
+<CodeGroup>
+```typescript PKCE Implementation
+// Generate code verifier and challenge
+const array = new Uint8Array(32);
+crypto.getRandomValues(array);
+const codeVerifier = btoa(String.fromCharCode(...array))
+  .replace(/\+/g, '-')
+  .replace(/\//g, '_')
+  .replace(/=/g, '');
+
+const encoder = new TextEncoder();
+const data = encoder.encode(codeVerifier);
+const digest = await crypto.subtle.digest('SHA-256', data);
+const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
+  .replace(/\+/g, '-')
+  .replace(/\//g, '_')
+  .replace(/=/g, '');
+```
+
+```typescript Hook Usage
+import { useZitadelSSO } from '@/hooks/useZitadelSSO';
+
+const { initiateSSO, availableConfigs } = useZitadelSSO();
+
+// Initiate SSO login
+await initiateSSO(configId);
+```
+</CodeGroup>
+
+See `src/hooks/useZitadelSSO.ts:33-50` for the complete PKCE implementation.
+
+### Role-Based Access Control (RBAC)
+
+The system implements a comprehensive RBAC model with four primary roles:
+
+- **Global Admin**: Full system access, manages organizations and global policies
+- **Organization Admin**: Manages users, resources, and settings within their organization
+- **Support**: Access to user management and troubleshooting tools
+- **User**: Standard access to assigned applications and devices
+
+<Note>
+  Users can have both local roles and Zitadel groups. The system checks both when determining access permissions, allowing for flexible hybrid authorization models.
+</Note>
+
+```typescript AuthContext Interface
+interface AuthContextType {
+  user: User | null;
+  session: Session | null;
+  profile: UserProfile | null;
+  roles: string[];
+  zitadelIdentity: ZitadelIdentity | null;
+  loading: boolean;
+  signOut: () => Promise<void>;
+  hasRole: (role: string) => boolean;
+  hasZitadelGroup: (group: string) => boolean;
+}
+```
+
+Access the authentication context from any component:
+
+```typescript
+import { useAuth } from '@/components/AuthProvider';
+
+const { profile, hasRole, hasZitadelGroup } = useAuth();
+
+// Check local role
+if (hasRole('global_admin')) {
+  // Admin-only functionality
+}
+
+// Check Zitadel group
+if (hasZitadelGroup('support')) {
+  // Support team functionality
+}
+```
+
+## Resource & Application Management
+
+### Application Marketplace
+
+<Card title="Centralized App Distribution" icon="store">
+  Browse and provision applications from a centralized marketplace with one-click deployment and automatic access provisioning.
+</Card>
+
+Features include:
+- **Quick Launch**: Single-click application access with automatic authentication
+- **Group-Based Provisioning**: Assign applications to groups for automatic user provisioning
+- **Usage Tracking**: Monitor application usage and session activity
+- **Resource Metadata**: Store connection details, protocols, and access requirements
+
+### Device Management
+
+<CardGroup cols={2}>
+  <Card title="Device Enrollment" icon="laptop">
+    Self-service device enrollment with QR codes and enrollment tokens for quick onboarding.
+  </Card>
+  <Card title="Trust Verification" icon="shield-check">
+    Continuous device trust verification and compliance checking before granting access.
+  </Card>
+</CardGroup>
+
+The device management system provides:
+
+- **Multi-Platform Support**: Windows, macOS, Linux, iOS, and Android
+- **VPN Integration**: Netbird and Headscale support for network access
+- **Device Attestation**: Hardware-backed device identity verification
+- **Session Management**: Track and terminate active device sessions
+
+<Warning>
+  Devices must be enrolled and verified before accessing protected resources. Unenrolled devices will be denied access at the network level.
+</Warning>
+
+## Network Security
+
+### Zero Trust Network Access
+
+The portal implements Zero Trust principles with multiple layers of security:
+
+<Steps>
+  <Step title="Identity Verification">
+    Users authenticate via SSO with MFA support through Zitadel
+  </Step>
+  <Step title="Device Trust">
+    Device enrollment and attestation verify device identity and compliance
+  </Step>
+  <Step title="Network Isolation">
+    Access restricted to internal Netbird VPN network only
+  </Step>
+  <Step title="Just-In-Time Access">
+    Resources granted access on-demand with time-based expiration
+  </Step>
+</Steps>
+
+### Network Isolation
+
+<Note>
+  In production deployments, the portal binds exclusively to the Netbird internal network interface, making it inaccessible from the public internet.
+</Note>
+
+Configuration example:
+
+```bash
+# Netbird internal IP
+VITE_NETWORK_MODE="internal"
+VITE_INTERNAL_HOST="100.64.0.10"
+VITE_ZITADEL_REDIRECT_URI="http://100.64.0.10:8080/auth/callback"
+```
+
+Firewall rules ensure network-level isolation:
+
+```bash
+# Allow only Netbird network
+sudo ufw allow from 100.64.0.0/10 to any port 8080
+sudo ufw deny 8080
+```
+
+## Administrative Features
+
+### Organization Management
+
+<CardGroup cols={2}>
+  <Card title="Multi-Tenancy" icon="building">
+    Support for multiple organizations with isolated data and configurations
+  </Card>
+  <Card title="Hierarchical Structure" icon="sitemap">
+    Organization tree view with parent-child relationships and inheritance
+  </Card>
+</CardGroup>
+
+Features include:
+- Organization creation and management
+- User assignment to organizations
+- Resource isolation by organization
+- Custom branding per organization (future)
+- Organization-specific policies and configurations
+
+### Audit Logging
+
+Comprehensive audit logging captures all security-relevant events:
+
+- User authentication and authorization events
+- Resource access grants and revocations
+- Administrative actions (user creation, role changes)
+- SSO configuration changes
+- Device enrollment and trust events
+
+```typescript Audit Log Entry
+{
+  event: "user.login",
+  user_id: "uuid",
+  organization_id: "uuid",
+  details: {
+    method: "zitadel_sso",
+    ip_address: "100.64.0.25",
+    user_agent: "Mozilla/5.0...",
+    zitadel_groups: ["support", "developers"]
+  },
+  created_at: "2026-03-05T10:30:00Z"
+}
+```
+
+Access audit logs from the Admin Panel at `/audit`.
+
+### Group Management
+
+<Card title="Flexible Group System" icon="users">
+  Create groups for organizing users and controlling access to applications and resources.
+</Card>
+
+Group capabilities:
+- **Application Assignment**: Assign apps to groups for bulk provisioning
+- **Resource Access**: Grant resource access to entire groups
+- **Zitadel Mapping**: Map Zitadel groups to local groups for SSO integration
+- **Dynamic Membership**: Users automatically inherit group permissions
+
+See `src/components/AppSidebar.tsx:62-64` for group-based UI filtering implementation.
+
+## Infrastructure Integration
+
+### Cloud Provider Support
+
+Integrate with major cloud providers for resource provisioning:
+
+- **AWS**: EC2, RDS, S3 bucket access management
+- **Azure**: Virtual machines, databases, storage accounts
+- **Google Cloud**: Compute Engine, Cloud SQL access
+- **Custom Hypervisors**: Support for VMware, Proxmox, KVM
+
+### VPN Management
+
+<CardGroup cols={2}>
+  <Card title="Netbird Integration" icon="network-wired">
+    Mesh VPN with automatic peer discovery and NAT traversal for secure network access.
+  </Card>
+  <Card title="Headscale Support" icon="server">
+    Self-hosted Tailscale control server for private mesh networking.
+  </Card>
+</CardGroup>
+
+The system integrates with modern mesh VPN solutions:
+
+- Automatic network provisioning
+- Device registration and key management
+- Access control list (ACL) synchronization
+- Network topology visualization
+
+## Session Management
+
+Real-time session monitoring and control:
+
+- **Active Sessions**: View all active user sessions across devices
+- **Session Termination**: Remotely terminate sessions for security
+- **Session History**: Track historical session data for compliance
+- **Idle Timeout**: Automatic session expiration after inactivity
+
+```typescript Session Interface
+interface UserSession {
+  id: string;
+  user_id: string;
+  resource_id: string;
+  device_id: string;
+  started_at: string;
+  last_activity: string;
+  status: 'active' | 'idle' | 'terminated';
+  ip_address: string;
+  protocol: 'ssh' | 'rdp' | 'vnc' | 'http' | 'https';
+}
+```
+
+## Technology Stack
+
+<CardGroup cols={3}>
+  <Card title="React 18" icon="react">
+    Modern UI with hooks and concurrent features
+  </Card>
+  <Card title="TypeScript" icon="code">
+    Type-safe development with full IDE support
+  </Card>
+  <Card title="Supabase" icon="database">
+    PostgreSQL backend with real-time subscriptions
+  </Card>
+  <Card title="Tailwind CSS" icon="palette">
+    Utility-first styling with custom design system
+  </Card>
+  <Card title="shadcn/ui" icon="blocks">
+    Accessible component library built on Radix UI
+  </Card>
+  <Card title="React Query" icon="arrows-rotate">
+    Powerful data synchronization and caching
+  </Card>
+</CardGroup>
+
+The portal is built with modern, production-ready technologies:
+
+- **Frontend**: React 18 with TypeScript for type safety
+- **Build Tool**: Vite for fast development and optimized builds
+- **UI Components**: shadcn/ui with Radix UI primitives
+- **Styling**: Tailwind CSS with custom design tokens
+- **Backend**: Supabase (PostgreSQL + Edge Functions)
+- **State Management**: React Query for server state
+- **Routing**: React Router v6 with nested layouts
+- **Forms**: React Hook Form with Zod validation
+
+See `package.json` for complete dependency list.
+
+## Security Features
+
+### Comprehensive Security Model
+
+<Steps>
+  <Step title="Authentication">
+    Multi-factor authentication through Zitadel SSO with PKCE flow
+  </Step>
+  <Step title="Authorization">
+    Role-based and group-based access control with least-privilege principles
+  </Step>
+  <Step title="Network">
+    VPN-only access with network-level isolation from public internet
+  </Step>
+  <Step title="Audit">
+    Complete audit trail of all security-relevant events
+  </Step>
+</Steps>
+
+<Warning>
+  **Security Best Practices**:
+  - Never expose the portal to the public internet
+  - Rotate service account tokens regularly
+  - Review audit logs frequently
+  - Enforce MFA for all users through Zitadel
+  - Keep Netbird clients updated on all devices
+</Warning>
+
+Additional security features:
+
+- **Token Handling**: No tokens stored in localStorage, only Supabase sessions
+- **CORS Protection**: Strict CORS policies on edge functions
+- **SQL Injection Prevention**: Parameterized queries via Supabase client
+- **XSS Protection**: React's built-in XSS protection with sanitization
+- **CSRF Protection**: State parameters on all OAuth flows
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture Overview" icon="diagram-project" href="/architecture">
+    Learn about the system architecture and components
+  </Card>
+  <Card title="Getting Started" icon="rocket" href="/getting-started/installation">
+    Set up your first deployment
+  </Card>
+  <Card title="Configuration Guide" icon="gear" href="/deployment/environment-variables">
+    Configure SSO, VPN, and integrations
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/zitadel-api">
+    Explore the REST and GraphQL APIs
+  </Card>
+</CardGroup>

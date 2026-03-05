@@ -1,0 +1,327 @@
+---
+title: Security Policies
+description: Configure Zitadel OIDC integration, manage SSO, and sync groups for secure authentication
+---
+
+The **Security Policies** page (also known as Zitadel Config) allows administrators to configure external identity provider integrations, specifically Zitadel OIDC for Single Sign-On (SSO) and group synchronization.
+
+## Access Requirements
+
+<Note>
+  Security Policies configuration requires **Organization Admin** or **Global Admin** role.
+</Note>
+
+## Overview
+
+Zitadel is a self-hosted identity platform that provides:
+
+- **OIDC Authentication**: Single Sign-On for users
+- **Group Synchronization**: Automatic role mapping from Zitadel to Nexus Access Vault
+- **User Management**: Centralized user directory
+
+## Creating a Configuration
+
+### Step 1: Open Configuration Dialog
+
+1. Click **Nueva Configuración** button
+2. Configuration dialog opens
+
+### Step 2: Basic Settings
+
+Fill in the required fields:
+
+#### Name
+
+- **Example**: "Zitadel Producción"
+- **Purpose**: Identify this configuration
+
+#### Issuer URL
+
+- **Format**: `https://your-zitadel-instance.com`
+- **Example**: `https://gate.kappa4.com`
+- **Note**: Trailing slash is automatically removed
+
+<Note>
+  The Issuer URL must be accessible from your deployment. Test connectivity before proceeding.
+</Note>
+
+### Step 3: OIDC Settings
+
+#### Client ID
+
+- Obtained from Zitadel Console → Applications
+- **Example**: `client_id_from_zitadel`
+
+#### Client Secret
+
+- Generated when creating an application in Zitadel
+- **Type**: Password field (hidden)
+- **Required**: For confidential clients
+
+#### Redirect URI
+
+- **Default**: `{window.location.origin}/auth/callback`
+- **Example**: `https://nexus.company.com/auth/callback`
+- **Action**: Click **Copy** icon to copy to clipboard
+
+<Warning>
+  Add this exact Redirect URI in Zitadel Console → Applications → Redirect URIs. Mismatches will cause authentication failures.
+</Warning>
+
+### Step 4: API Settings (Optional)
+
+For group synchronization, configure:
+
+#### API Token (Management API)
+
+- **Type**: Personal Access Token
+- **Purpose**: Sync groups and users from Zitadel
+- **Where to create**: Zitadel Console → Users → Service Accounts → Personal Access Tokens
+
+#### Project ID
+
+- **Format**: Numeric ID (e.g., `349388332125388804`)
+- **Purpose**: Filter users and roles by project
+- **Optional**: Leave blank to sync all
+
+### Step 5: Sync Settings
+
+#### Sincronizar roles automáticamente
+
+- **Default**: Enabled
+- **Purpose**: Automatically sync Zitadel groups/roles to local groups
+
+### Step 6: Test Connection
+
+1. Click **Probar Conexión** button
+2. System validates:
+   - OIDC endpoints are accessible
+   - API token is valid (if provided)
+   - Groups can be retrieved
+3. Success message shows endpoint detection and group count
+
+<Note>
+  Testing is highly recommended before saving to catch configuration errors early.
+</Note>
+
+### Step 7: Save
+
+1. Click **Guardar Configuración**
+2. Configuration is saved to database
+3. Dialog closes
+
+## Managing Configurations
+
+### Viewing Configurations
+
+All configurations are listed in the left sidebar card:
+
+- **Name**: Display name
+- **Issuer URL**: Truncated URL
+- **Status Badge**: Active or Inactive
+
+### Selecting a Configuration
+
+Click a configuration card to view details:
+
+- **Details tab**: OIDC endpoints and settings
+- **Roles tab**: Group mappings
+- **Users tab**: Project users
+
+### Activating/Deactivating
+
+1. Select configuration
+2. Toggle the switch in the header
+3. Status updates immediately
+
+<Note>
+  Inactive configurations do not process authentication requests. Use this to temporarily disable SSO without deleting the configuration.
+</Note>
+
+### Editing a Configuration
+
+1. Select configuration
+2. Click **Editar** button
+3. Edit dialog opens with current values
+4. Make changes
+5. Click **Probar Conexión** to validate (optional)
+6. Click **Guardar Cambios**
+
+## Roles (Group Mappings)
+
+### Syncing Groups from Zitadel
+
+1. Select a configuration with API token
+2. Go to **Roles** tab
+3. Click **Sincronizar desde Zitadel**
+4. System fetches all groups/roles from Zitadel
+5. New groups are added to mapping table
+6. Success message shows count
+
+<Note>
+  Group sync requires a valid API Token. Without it, the "Sincronizar" button is disabled.
+</Note>
+
+### Mapping Groups
+
+Map Zitadel groups to local Nexus groups:
+
+1. Find Zitadel group in the table
+2. Click the **Grupo Local** dropdown
+3. Select a local group or "Sin vincular"
+4. Mapping is saved immediately
+
+#### Why Map Groups?
+
+- Local groups have permissions configured in [Roles & Permissions](/admin/roles-permissions)
+- Zitadel groups must be mapped to local groups to inherit permissions
+- Unmapped groups do not grant any access
+
+### Auto-Sync Badge
+
+- **Sí**: Group membership syncs automatically on login
+- **No**: Manual sync required
+
+<Note>
+  Auto-sync is determined by the configuration's `sync_groups` setting.
+</Note>
+
+## Users (Project Users)
+
+### Loading Project Users
+
+1. Select a configuration with API token and project ID
+2. Go to **Users** tab
+3. Click **Cargar Usuarios**
+4. System fetches users with grants in the project
+5. Table displays user details
+
+### User Table
+
+| Column | Description |
+|--------|-------------|
+| Usuario | Display name and username |
+| Email | User's email address |
+| Roles | List of Zitadel groups/roles assigned |
+
+<Note>
+  This is a read-only view. User management happens in Zitadel Console.
+</Note>
+
+## Details Tab
+
+### Configuration Details
+
+View read-only configuration:
+
+- **Client ID**: OIDC client identifier
+- **Redirect URI**: Callback URL
+- **Scopes**: OIDC scopes (e.g., `openid`, `profile`, `email`)
+- **API Token**: Status badge (configured or not)
+- **Project ID**: Zitadel project ID
+
+### OIDC Endpoints
+
+Automatically generated endpoints:
+
+```
+Authorization: {issuer_url}/oauth/v2/authorize
+Token: {issuer_url}/oauth/v2/token
+UserInfo: {issuer_url}/oidc/v1/userinfo
+```
+
+<Note>
+  These endpoints follow Zitadel's OIDC implementation. They are used internally for authentication flows.
+</Note>
+
+## Empty States
+
+### No Configurations
+
+First-time setup displays:
+
+- Key icon
+- Message: "No hay configuraciones"
+- Description prompts to configure Zitadel
+- **Agregar Configuración** button
+
+### No API Token
+
+When API token is missing:
+
+- Shield icon (50% opacity)
+- Message: "Se requiere un API Token para sincronizar grupos"
+- Prompt to edit configuration
+
+### No Groups Synced
+
+When no groups exist:
+
+- Users icon (50% opacity)
+- Message: "No hay grupos sincronizados"
+- Prompt to click "Sincronizar desde Zitadel"
+
+## Permissions
+
+| Action | Org Admin | Global Admin | Support | User |
+|--------|-----------|--------------|---------|------|
+| View configurations | ✅ | ✅ | ❌ | ❌ |
+| Create configuration | ✅ | ✅ | ❌ | ❌ |
+| Edit configuration | ✅ | ✅ | ❌ | ❌ |
+| Test connection | ✅ | ✅ | ❌ | ❌ |
+| Sync groups | ✅ | ✅ | ❌ | ❌ |
+| Map groups | ✅ | ✅ | ❌ | ❌ |
+| Load users | ✅ | ✅ | ❌ | ❌ |
+| Activate/deactivate | ✅ | ✅ | ❌ | ❌ |
+
+## Best Practices
+
+<Note>
+  **Test Before Deploy**: Always test the connection before activating a configuration in production.
+</Note>
+
+<Note>
+  **Secure API Tokens**: Store API tokens securely. They grant full access to Zitadel Management API.
+</Note>
+
+<Note>
+  **Map Groups Early**: Set up group mappings immediately after sync to ensure users get correct permissions on first login.
+</Note>
+
+<Note>
+  **Monitor Sync**: Regularly check group sync status to catch integration issues early.
+</Note>
+
+## Troubleshooting
+
+### Connection Test Fails
+
+1. Verify issuer URL is correct and accessible
+2. Check network connectivity
+3. Ensure Zitadel instance is running
+
+### Groups Not Syncing
+
+1. Verify API token is valid
+2. Check token has required permissions in Zitadel
+3. Confirm project ID is correct (if specified)
+
+### Authentication Fails
+
+1. Verify redirect URI matches exactly in Zitadel
+2. Check client ID and secret are correct
+3. Ensure configuration is active
+4. Verify user exists in Zitadel
+
+### Users Not Getting Permissions
+
+1. Check Zitadel groups are synced
+2. Verify groups are mapped to local groups
+3. Confirm local groups have permissions configured
+4. Check user has role assigned in Zitadel project
+
+## Related Pages
+
+- [Roles & Permissions](/admin/roles-permissions)
+- [User Management](/admin/user-management)
+- [Organization Structure](/admin/organization-structure)

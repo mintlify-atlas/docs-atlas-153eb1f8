@@ -1,0 +1,429 @@
+---
+title: 'Device Management'
+description: 'Enroll and manage your trusted devices'
+icon: 'laptop'
+---
+
+Device Management ensures that only authorized and trusted devices can access your organization's resources. The system uses device fingerprinting and continuous trust evaluation to maintain security across all endpoints.
+
+## Overview
+
+The My Devices page allows you to view all your enrolled devices, check their security status, and manage device access. Each device is continuously monitored and assigned a trust level based on various security factors.
+
+**Key Features:**
+- Device enrollment and registration
+- Real-time device status monitoring
+- Trust level assessment (High, Medium, Low)
+- Device fingerprinting for identification
+- Silent enrollment for seamless onboarding
+- Device revocation and re-enrollment
+- Current device highlighting
+
+## Device Enrollment
+
+### Automatic Silent Enrollment
+
+When you first access the My Devices page from a new device, the system automatically enrolls it in the background:
+
+```tsx
+// From MyDevices.tsx:66
+useEffect(() => {
+  const checkAndEnroll = async () => {
+    if (!user || loading || devices.length === 0) return;
+    
+    const hasCurrentDevice = devices.some(d => d.fingerprint === deviceInfo.fingerprint);
+    if (!hasCurrentDevice) {
+      // Auto-enroll this device silently
+      const result = await silentEnroll();
+      if (result?.success) {
+        fetchDevices();
+        toast.success('This device has been enrolled');
+      }
+    }
+  };
+}, [user, loading, devices.length]);
+```
+
+### Manual Enrollment
+
+Click the "Enroll New Device" button to manually register a device:
+
+1. Navigate to My Devices
+2. Click **Enroll New Device**
+3. The system captures device fingerprint and metadata
+4. Device is registered with initial trust level
+5. You can now access resources from the enrolled device
+
+**UI Location:** `src/pages/MyDevices.tsx:150`
+
+## Device Information
+
+Each device card displays comprehensive information:
+
+<CardGroup cols={2}>
+  <Card title="Device Details" icon="info-circle">
+    - Device name
+    - Operating system
+    - Device type (laptop, desktop, mobile, tablet)
+    - Enrollment date
+  </Card>
+  <Card title="Security Status" icon="shield-check">
+    - Current status (active, pending, revoked, compromised)
+    - Trust level (high, medium, low)
+    - Last seen timestamp
+    - Geographic location
+  </Card>
+</CardGroup>
+
+### Device Types and Icons
+
+```tsx
+// From DeviceCard.tsx:46
+const getDeviceIcon = (type: string) => {
+  switch (type) {
+    case 'laptop':
+      return Laptop2;
+    case 'desktop':
+      return Monitor;
+    case 'mobile':
+    case 'tablet':
+      return Smartphone;
+    default:
+      return Laptop2;
+  }
+};
+```
+
+## Trust Levels
+
+Devices are assigned trust levels based on security posture:
+
+<Tabs>
+  <Tab title="High Trust">
+    **Indicators:**
+    - Green shield with checkmark icon
+    - Device meets all security requirements
+    - Recently seen and actively used
+    - No security incidents detected
+    
+    **Access:** Full access to all authorized resources
+  </Tab>
+  <Tab title="Medium Trust">
+    **Indicators:**
+    - Yellow shield icon
+    - Device meets most security requirements
+    - May have minor compliance issues
+    - Requires attention
+    
+    **Access:** Limited access, may require additional verification
+  </Tab>
+  <Tab title="Low Trust">
+    **Indicators:**
+    - Red shield with alert icon
+    - Device fails security requirements
+    - Security risks detected
+    - Immediate action required
+    
+    **Access:** Restricted or no access until issues resolved
+  </Tab>
+</Tabs>
+
+### Trust Level Implementation
+
+```tsx
+// From DeviceCard.tsx:60
+const getTrustIcon = (level: string) => {
+  switch (level) {
+    case 'high':
+      return <ShieldCheck className="h-4 w-4 text-success" />;
+    case 'medium':
+      return <Shield className="h-4 w-4 text-warning" />;
+    case 'low':
+      return <ShieldAlert className="h-4 w-4 text-destructive" />;
+    default:
+      return <Shield className="h-4 w-4 text-muted-foreground" />;
+  }
+};
+```
+
+## Device Status
+
+### Status Types
+
+| Status | Badge Color | Description |
+|--------|-------------|-------------|
+| **Active** | Green | Device is enrolled and authorized for access |
+| **Pending** | Yellow | Enrollment initiated, awaiting approval |
+| **Revoked** | Red | Access has been revoked by user or admin |
+| **Compromised** | Red | Security threat detected, access blocked |
+
+### Status Visual Indicators
+
+```tsx
+// From DeviceCard.tsx:88
+<div className={`h-12 w-12 rounded-lg flex items-center justify-center ${
+  device.status === 'active' ? 'bg-success/10' :
+  device.status === 'compromised' ? 'bg-destructive/10' : 'bg-muted'
+}`}>
+  <Icon className={`h-6 w-6 ${
+    device.status === 'active' ? 'text-success' :
+    device.status === 'compromised' ? 'text-destructive' : 'text-muted-foreground'
+  }`} />
+</div>
+```
+
+## Current Device Indicator
+
+The device you're currently using is highlighted with:
+- Border accent in primary color
+- "This device" badge
+- "Active Session" status badge
+- Special visual treatment at the top of the page
+
+```tsx
+// From MyDevices.tsx:158
+{currentDevice && (
+  <Card className="border-primary/30 bg-primary/5">
+    <CardContent className="flex items-center gap-4 py-4">
+      <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+        <Laptop2 className="h-6 w-6 text-primary" />
+      </div>
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <p className="font-medium">Current Device</p>
+          <Badge className="bg-primary/20 text-primary border-0">Active Session</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {currentDevice.name} • {currentDevice.os}
+        </p>
+      </div>
+    </CardContent>
+  </Card>
+)}
+```
+
+## Device Management Actions
+
+### Refreshing Device List
+
+Click the **Refresh** button to reload the device list and update status information:
+
+```tsx
+// From MyDevices.tsx:36
+const fetchDevices = async () => {
+  const { data, error } = await supabase
+    .from('devices')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('last_seen', { ascending: false });
+  
+  // Identify current device by fingerprint
+  const current = data?.find(d => d.fingerprint === deviceInfo.fingerprint);
+  setCurrentDeviceId(current?.id || null);
+};
+```
+
+### Re-enrolling a Device
+
+If a device's security status has changed or you need to reset its trust level:
+
+1. Click the three-dot menu (⋮) on the device card
+2. Select **Re-enroll Device**
+3. Device status changes to "pending"
+4. Trust level resets to "low"
+5. New enrollment token is generated
+
+```tsx
+// From MyDevices.tsx:112
+const handleReEnroll = async (device: Device) => {
+  const { error } = await supabase
+    .from('devices')
+    .update({
+      status: 'pending',
+      trust_level: 'low',
+      enrollment_token: crypto.randomUUID(),
+    })
+    .eq('id', device.id);
+};
+```
+
+### Revoking Device Access
+
+To revoke access from a device:
+
+1. Click the three-dot menu (⋮) on the device card
+2. Select **Revoke Access**
+3. Confirm the action in the dialog
+4. Device is immediately logged out and removed
+
+<Warning>
+  **Important:** You cannot revoke access from your current device. This prevents accidental lockout.
+</Warning>
+
+```tsx
+// From MyDevices.tsx:92
+const confirmRevoke = async () => {
+  const { error } = await supabase
+    .from('devices')
+    .delete()
+    .eq('id', selectedDevice.id);
+  
+  toast.success('Device access revoked');
+  fetchDevices();
+};
+```
+
+## Device Fingerprinting
+
+The system uses device fingerprinting to uniquely identify devices across sessions:
+
+**Fingerprint Components:**
+- Browser user agent
+- Screen resolution and color depth
+- Timezone and language settings
+- Installed plugins and fonts
+- Hardware capabilities
+- Canvas fingerprint
+
+Fingerprints are used to:
+1. Identify returning devices
+2. Detect device changes
+3. Prevent duplicate enrollments
+4. Track device sessions
+
+## Last Seen Indicator
+
+Each device shows when it was last used:
+
+```tsx
+// From DeviceCard.tsx:73
+const formatLastSeen = (date: string | null) => {
+  if (!date) return 'Never';
+  const diff = Date.now() - new Date(date).getTime();
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  
+  if (hours < 1) return 'Just now';
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return new Date(date).toLocaleDateString();
+};
+```
+
+**Display Examples:**
+- "Just now" - Less than 1 hour ago
+- "3h ago" - Hours ago
+- "5d ago" - Days ago
+- "12/15/2024" - Over a week ago
+
+## Tailscale Integration
+
+The My Devices page includes a Tailscale connection monitor for devices using Tailscale VPN:
+
+```tsx
+// From MyDevices.tsx:236
+{user && (
+  <TailscaleMonitor 
+    userId={user.id} 
+    organizationId={null} 
+  />
+)}
+```
+
+This component monitors:
+- Tailscale connection status
+- VPN connectivity
+- Network routing
+- Peer connections
+
+## Empty States
+
+### No Devices Enrolled
+
+If you haven't enrolled any devices yet:
+
+<Frame>
+  <div style={{textAlign: 'center', padding: '3rem'}}>
+    <div style={{fontSize: '3rem', marginBottom: '1rem'}}>🔐</div>
+    <h3>No devices enrolled</h3>
+    <p style={{color: '#6b7280'}}>Enroll your first device to get started</p>
+    <button style={{marginTop: '1rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.5rem'}}>Enroll This Device</button>
+  </div>
+</Frame>
+
+## Security Considerations
+
+<CardGroup cols={2}>
+  <Card title="Regular Monitoring" icon="eye">
+    Check your device list regularly to ensure all listed devices are recognized and authorized
+  </Card>
+  <Card title="Revoke Unknown Devices" icon="ban">
+    If you see a device you don't recognize, revoke its access immediately and contact your administrator
+  </Card>
+  <Card title="Trust Level Awareness" icon="shield-halved">
+    Pay attention to trust levels - a sudden drop may indicate a security issue
+  </Card>
+  <Card title="Update Device Info" icon="rotate">
+    Keep your devices up-to-date to maintain high trust levels
+  </Card>
+</CardGroup>
+
+## Technical Details
+
+### Device Data Model
+
+```tsx
+export interface Device {
+  id: string;
+  name: string;
+  device_type: string;  // laptop, desktop, mobile, tablet
+  os: string | null;
+  last_seen: string | null;
+  location: string | null;
+  status: string;  // active, pending, revoked, compromised
+  enrolled_at: string | null;
+  trust_level: string;  // high, medium, low
+  fingerprint: string | null;
+}
+```
+
+### useDeviceEnrollment Hook
+
+The enrollment process uses a custom hook:
+
+```tsx
+const { deviceInfo, silentEnroll } = useDeviceEnrollment();
+
+// deviceInfo contains:
+// - fingerprint
+// - deviceType
+// - os
+// - browser
+// - location
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Enroll All Your Devices">
+    Register every device you use to access company resources
+  </Step>
+  <Step title="Monitor Device Status">
+    Regularly check your devices page to ensure all devices are active and trusted
+  </Step>
+  <Step title="Remove Old Devices">
+    Revoke access from devices you no longer use
+  </Step>
+  <Step title="Re-enroll After Changes">
+    If you reinstall your OS or make major hardware changes, re-enroll your device
+  </Step>
+  <Step title="Report Suspicious Activity">
+    Contact your administrator if you notice unfamiliar devices or unexpected trust level changes
+  </Step>
+</Steps>
+
+## Related Features
+
+- [Application Management](/features/application-management) - Access applications from enrolled devices
+- [Session Management](/features/session-management) - Monitor active sessions by device
+- [Policies](/features/policies) - Device trust levels affect policy evaluation

@@ -1,0 +1,604 @@
+---
+title: "Network Configuration"
+description: "Configure VPN-only access and network isolation for Nexus Access Vault"
+icon: "network-wired"
+---
+
+## Overview
+
+Nexus Access Vault supports network isolation, allowing you to restrict access to internal VPN networks only. This guide covers setting up Netbird VPN integration and configuring the application for VPN-only access.
+
+<Info>
+  **Security Best Practice:** For production deployments handling sensitive access management, we strongly recommend restricting access to an internal VPN network only.
+</Info>
+
+## Network Modes
+
+Nexus Access Vault supports two network modes:
+
+<CardGroup cols={2}>
+  <Card title="Internal Mode" icon="lock">
+    Access restricted to VPN network only. Users must be connected to your Netbird/VPN to access the portal.
+  </Card>
+  <Card title="Public Mode" icon="globe">
+    Open to public internet. Suitable for development or when using other security controls.
+  </Card>
+</CardGroup>
+
+Set the mode using the `VITE_NETWORK_MODE` environment variable:
+
+```bash
+# Internal mode (VPN required)
+VITE_NETWORK_MODE="internal"
+
+# Public mode
+VITE_NETWORK_MODE="public"
+```
+
+## Netbird VPN Setup
+
+[Netbird](https://netbird.io/) is a modern, WireGuard-based VPN solution that's perfect for securing Nexus Access Vault. This section covers the complete setup.
+
+### Prerequisites
+
+<Steps>
+  <Step title="Netbird Account">
+    Create a free account at [https://netbird.io](https://netbird.io) or deploy your own self-hosted Netbird instance.
+  </Step>
+
+  <Step title="Setup Key">
+    Generate a setup key in the Netbird dashboard:
+    1. Navigate to **Setup Keys**
+    2. Click **Create Setup Key**
+    3. Set expiration and usage limits
+    4. Copy the setup key for use during installation
+  </Step>
+</Steps>
+
+### Server Installation
+
+<Tabs>
+  <Tab title="Ubuntu/Debian">
+    ```bash
+    # Install Netbird
+    curl -fsSL https://pkgs.netbird.io/install.sh | sh
+
+    # Connect to your network
+    netbird up --setup-key <your-setup-key>
+
+    # Verify connection
+    netbird status
+    ```
+  </Tab>
+
+  <Tab title="CentOS/RHEL">
+    ```bash
+    # Install Netbird
+    curl -fsSL https://pkgs.netbird.io/install.sh | sh
+
+    # Connect to your network
+    netbird up --setup-key <your-setup-key>
+
+    # Verify connection
+    netbird status
+    ```
+  </Tab>
+
+  <Tab title="Docker">
+    ```bash
+    docker run -d \
+      --name netbird \
+      --cap-add=NET_ADMIN \
+      --network host \
+      -e NB_SETUP_KEY=<your-setup-key> \
+      netbirdio/netbird:latest
+    ```
+  </Tab>
+</Tabs>
+
+See ZITADEL_NETBIRD_SETUP.md:105-111 for the basic installation commands.
+
+### Get Your Netbird IP
+
+After connecting to Netbird, get your assigned IP address:
+
+```bash
+netbird status
+```
+
+Output will show something like:
+
+```
+Peer name: nexus-vault-server
+Status: Connected
+NetBird IP: 100.64.1.10
+Public key: AbCdEf123...
+```
+
+Note the **NetBird IP** - this is what you'll use for `VITE_INTERNAL_HOST`.
+
+See ZITADEL_NETBIRD_SETUP.md:113-118
+
+## Application Network Configuration
+
+### Environment Variables
+
+Configure the network mode and internal host:
+
+```bash .env
+# Network Configuration
+VITE_NETWORK_MODE="internal"
+VITE_INTERNAL_HOST="100.64.1.10"  # Your Netbird IP
+```
+
+See .env.example:14-18 and [Environment Variables](/deployment/environment-variables) for details.
+
+### Vite Server Configuration
+
+The default Vite configuration binds to all interfaces:
+
+```typescript vite.config.ts
+export default defineConfig({
+  server: {
+    host: "::",  // Binds to all IPv6 and IPv4 interfaces
+    port: 8080,
+  },
+});
+```
+
+See vite.config.ts:8-11
+
+<Info>
+  Binding to `::` (all interfaces) allows connections from both localhost and the Netbird network. The firewall will restrict external access.
+</Info>
+
+### Production: Bind to Specific Interface
+
+For production deployments, you can bind only to the Netbird interface:
+
+```typescript vite.config.ts
+export default defineConfig({
+  server: {
+    host: "100.64.1.10",  // Your Netbird IP only
+    port: 8080,
+  },
+});
+```
+
+See ZITADEL_NETBIRD_SETUP.md:120-138 for server binding recommendations.
+
+## Firewall Configuration
+
+Configure your firewall to allow connections only from the Netbird network.
+
+### UFW (Ubuntu)
+
+```bash
+# Allow from Netbird subnet (100.64.0.0/10 is Netbird's default)
+sudo ufw allow from 100.64.0.0/10 to any port 8080
+
+# Deny all other connections to port 8080
+sudo ufw deny 8080
+
+# Enable firewall
+sudo ufw enable
+
+# Check status
+sudo ufw status
+```
+
+See ZITADEL_NETBIRD_SETUP.md:140-148
+
+### firewalld (CentOS/RHEL)
+
+```bash
+# Create a rich rule to allow Netbird subnet
+sudo firewall-cmd --permanent --add-rich-rule='
+  rule family="ipv4"
+  source address="100.64.0.0/10"
+  port port="8080" protocol="tcp" accept'
+
+# Block all other traffic to 8080
+sudo firewall-cmd --permanent --add-rich-rule='
+  rule family="ipv4"
+  port port="8080" protocol="tcp" reject'
+
+# Reload firewall
+sudo firewall-cmd --reload
+```
+
+### iptables
+
+```bash
+# Allow from Netbird subnet
+sudo iptables -A INPUT -p tcp -s 100.64.0.0/10 --dport 8080 -j ACCEPT
+
+# Deny all other connections
+sudo iptables -A INPUT -p tcp --dport 8080 -j DROP
+
+# Save rules
+sudo iptables-save > /etc/iptables/rules.v4
+```
+
+## Nginx Reverse Proxy
+
+For production deployments, use Nginx as a reverse proxy with SSL termination.
+
+### Basic Configuration
+
+```nginx /etc/nginx/sites-available/nexus-vault
+server {
+    listen 100.64.1.10:80;
+    server_name vault.internal.company.com;
+
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### SSL/TLS Configuration
+
+```nginx /etc/nginx/sites-available/nexus-vault-ssl
+server {
+    listen 100.64.1.10:443 ssl http2;
+    server_name vault.internal.company.com;
+
+    # SSL certificates
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    # SSL settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Proxy settings
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Redirect HTTP to HTTPS
+server {
+    listen 100.64.1.10:80;
+    server_name vault.internal.company.com;
+    return 301 https://$server_name$request_uri;
+}
+```
+
+See ZITADEL_NETBIRD_SETUP.md:150-170 for Nginx configuration example.
+
+Enable the site:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/nexus-vault-ssl /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+## Internal DNS Configuration
+
+For easier access, configure internal DNS to resolve a friendly name to your Netbird IP.
+
+### Using Netbird's Built-in DNS
+
+Netbird supports DNS management:
+
+1. Navigate to **DNS** in Netbird dashboard
+2. Click **Add Nameserver**
+3. Add your internal domain records
+4. Map `vault.internal.company.com` → `100.64.1.10`
+
+### Using /etc/hosts
+
+For simple setups, add to each client's `/etc/hosts`:
+
+```bash
+# Add to /etc/hosts
+100.64.1.10  vault.internal.company.com
+```
+
+### Using Pi-hole or AdGuard Home
+
+If you run Pi-hole or AdGuard Home on your network:
+
+1. Add a local DNS record
+2. Domain: `vault.internal.company.com`
+3. IP Address: `100.64.1.10`
+
+## Authentication Configuration
+
+### Zitadel Redirect URI
+
+When using VPN-only access, update your Zitadel redirect URI to use the internal address:
+
+```bash .env
+VITE_ZITADEL_REDIRECT_URI="http://100.64.1.10:8080/auth/callback"
+
+# Or if using internal DNS:
+VITE_ZITADEL_REDIRECT_URI="https://vault.internal.company.com/auth/callback"
+```
+
+<Warning>
+  **Important:** The redirect URI must be added to the allowed redirect URIs in your Zitadel application configuration.
+</Warning>
+
+See ZITADEL_NETBIRD_SETUP.md:18-23 and .env.example:8-12
+
+### Update Zitadel Application
+
+In your Zitadel instance:
+
+1. Navigate to your OIDC application
+2. Go to **Redirect URIs**
+3. Add: `http://100.64.1.10:8080/auth/callback` (or your internal domain)
+4. Save changes
+
+## Client Access
+
+### Installing Netbird on Client Devices
+
+Users need Netbird installed to access the portal:
+
+<Tabs>
+  <Tab title="Windows">
+    1. Download from [https://netbird.io/downloads](https://netbird.io/downloads)
+    2. Run installer
+    3. Enter setup key or login with SSO
+    4. Connect to network
+  </Tab>
+
+  <Tab title="macOS">
+    ```bash
+    # Using Homebrew
+    brew install netbird
+
+    # Connect to network
+    netbird up --setup-key <setup-key>
+    ```
+  </Tab>
+
+  <Tab title="Linux">
+    ```bash
+    # Install
+    curl -fsSL https://pkgs.netbird.io/install.sh | sh
+
+    # Connect
+    netbird up --setup-key <setup-key>
+    ```
+  </Tab>
+
+  <Tab title="iOS/Android">
+    1. Install Netbird app from App Store / Google Play
+    2. Login with your Netbird account
+    3. Connect to your network
+  </Tab>
+</Tabs>
+
+### Accessing the Portal
+
+Once connected to Netbird, users can access the portal:
+
+```
+http://100.64.1.10:8080
+
+# Or if using internal DNS:
+https://vault.internal.company.com
+```
+
+See ZITADEL_NETBIRD_SETUP.md:172-183 for user flow.
+
+## User Flow
+
+<Steps>
+  <Step title="Connect to VPN">
+    User connects to Netbird VPN using the Netbird client.
+
+    ```bash
+    netbird status
+    # Should show: Status: Connected
+    ```
+  </Step>
+
+  <Step title="Access Portal">
+    User navigates to the internal IP or domain:
+
+    ```
+    http://100.64.1.10:8080
+    ```
+  </Step>
+
+  <Step title="Authenticate with Zitadel">
+    User clicks "Sign in with Kappa4 Manager" and is redirected to Zitadel for authentication.
+  </Step>
+
+  <Step title="Redirected Back">
+    After authentication, user is redirected back to the portal via the callback URL.
+  </Step>
+
+  <Step title="Access Dashboard">
+    User sees their dashboard with access to resources based on their groups and permissions.
+  </Step>
+</Steps>
+
+See ZITADEL_NETBIRD_SETUP.md:172-183
+
+## Alternative VPN Solutions
+
+While this guide focuses on Netbird, you can use other VPN solutions:
+
+### Tailscale
+
+[Tailscale](https://tailscale.com/) is another WireGuard-based VPN similar to Netbird:
+
+```bash
+# Install Tailscale
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# Connect
+sudo tailscale up
+
+# Get IP
+tailscale ip -4
+```
+
+Use the Tailscale IP for `VITE_INTERNAL_HOST`.
+
+### WireGuard
+
+For a self-hosted solution, use [WireGuard](https://www.wireguard.com/) directly:
+
+1. Set up WireGuard server
+2. Configure client peers
+3. Use WireGuard subnet (e.g., `10.0.0.0/24`) in firewall rules
+4. Use server's WireGuard IP for `VITE_INTERNAL_HOST`
+
+### OpenVPN
+
+[OpenVPN](https://openvpn.net/) is a traditional VPN solution:
+
+1. Set up OpenVPN server
+2. Distribute client certificates
+3. Configure firewall to allow OpenVPN subnet
+4. Use server's VPN IP for `VITE_INTERNAL_HOST`
+
+## Testing Network Isolation
+
+### Test VPN Access
+
+From a device connected to VPN:
+
+```bash
+# Should succeed
+curl http://100.64.1.10:8080
+```
+
+### Test External Access
+
+From a device NOT connected to VPN:
+
+```bash
+# Should fail (connection refused/timeout)
+curl http://YOUR_PUBLIC_IP:8080
+```
+
+<Note>
+  If external access works, review your firewall rules. The application should be accessible ONLY via VPN.
+</Note>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Cannot access portal from VPN">
+    1. Verify Netbird is connected: `netbird status`
+    2. Check Netbird IP: `netbird status | grep IP`
+    3. Test server connectivity: `ping 100.64.1.10`
+    4. Verify application is running: `curl localhost:8080`
+    5. Check firewall allows Netbird subnet: `sudo ufw status`
+    6. Ensure server is bound to correct interface
+  </Accordion>
+
+  <Accordion title="Authentication redirect fails">
+    1. Verify `VITE_ZITADEL_REDIRECT_URI` uses internal IP/domain
+    2. Check redirect URI is added in Zitadel application
+    3. Ensure redirect URI matches exactly (http vs https, trailing slashes)
+    4. Test Zitadel is accessible from server: `curl https://manager.kappa4.com`
+    5. Check browser console for OIDC errors
+  </Accordion>
+
+  <Accordion title="External access not blocked">
+    1. Verify firewall rules are active: `sudo ufw status`
+    2. Check rules are in correct order (allow before deny)
+    3. Ensure firewall is enabled: `sudo ufw enable`
+    4. Test from external IP: `curl http://YOUR_PUBLIC_IP:8080`
+    5. Check no port forwarding rules bypass firewall
+  </Accordion>
+
+  <Accordion title="Netbird not connecting">
+    1. Check setup key is valid and not expired
+    2. Verify network connectivity to Netbird servers
+    3. Check logs: `netbird service logs`
+    4. Try disconnect and reconnect: `netbird down && netbird up`
+    5. Verify account status in Netbird dashboard
+  </Accordion>
+
+  <Accordion title="SSL certificate issues">
+    1. For internal networks, use self-signed certificates
+    2. Generate certificate: `openssl req -x509 -nodes -days 365 ...`
+    3. Install certificate on client devices
+    4. Or use Let's Encrypt with DNS challenge for internal domains
+    5. Configure Nginx with correct certificate paths
+  </Accordion>
+</AccordionGroup>
+
+See ZITADEL_NETBIRD_SETUP.md:198-221 for additional troubleshooting tips.
+
+## Security Considerations
+
+<Card title="Network Isolation Security" icon="shield-check">
+  **Benefits of VPN-only access:**
+
+  1. **Zero Trust Network:** Access only from authorized VPN peers
+  2. **No Public Exposure:** Application not accessible from internet
+  3. **Encrypted Transport:** All traffic encrypted via WireGuard
+  4. **Audit Trail:** Netbird logs all connections
+  5. **Device Management:** Control which devices can connect
+  6. **IP Allowlisting:** Easy to implement additional IP-based rules
+
+  See ZITADEL_NETBIRD_SETUP.md:223-229
+</Card>
+
+### Additional Security Measures
+
+<AccordionGroup>
+  <Accordion title="Device Authorization">
+    In Netbird dashboard:
+    1. Enable **Peer Approval** mode
+    2. Review and approve new peers manually
+    3. Set peer expiration policies
+    4. Monitor connected peers regularly
+  </Accordion>
+
+  <Accordion title="Network Segmentation">
+    Use Netbird's network policies:
+    1. Create peer groups (e.g., "admins", "users")
+    2. Define access control policies between groups
+    3. Restrict which peers can access the vault server
+    4. Implement least-privilege access
+  </Accordion>
+
+  <Accordion title="Logging and Monitoring">
+    Monitor access:
+    1. Enable Netbird activity logs
+    2. Monitor application logs: `pm2 logs nexus-vault`
+    3. Review Nginx access logs: `tail -f /var/log/nginx/access.log`
+    4. Set up alerts for suspicious activity
+    5. Review audit logs in the portal regularly
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="gear" href="/deployment/environment-variables">
+    Configure network mode and internal host
+  </Card>
+  <Card title="Zitadel OIDC" icon="shield-check" href="/authentication/zitadel-setup">
+    Set up authentication for VPN access
+  </Card>
+  <Card title="Self-Hosted Deployment" icon="server" href="/deployment/self-hosted">
+    Complete deployment guide
+  </Card>
+  <Card title="Admin Panel" icon="user-shield" href="/admin/admin-panel">
+    Manage users and access permissions
+  </Card>
+</CardGroup>

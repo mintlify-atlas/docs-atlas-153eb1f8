@@ -1,0 +1,285 @@
+---
+title: 'Application Management'
+description: 'Access and manage your published applications'
+icon: 'rocket'
+---
+
+The Application Management feature provides a centralized portal for accessing all your published applications and resources. Users can launch applications through multiple connection methods including direct access, remote desktop (RDP), SSH, Apache Guacamole, and TSPlus HTML5.
+
+## Overview
+
+The My Applications page displays all resources you have been granted access to, organized in an intuitive tile-based interface. Each application shows its current status, connection type, and provides quick-launch options.
+
+**Key Features:**
+- Tile-based application launcher
+- Multiple connection methods per application
+- Search and filter applications
+- Organize apps with favorites and recent views
+- Launch apps in embedded workspace or new tab
+- Edit and remove applications from your list
+
+## Application Types
+
+Nexus Access Vault supports various resource types:
+
+| Resource Type | Description | Connection Methods |
+|---------------|-------------|--------------------|
+| **Windows VM** | Windows virtual machine | RDP, Guacamole, TSPlus |
+| **Linux VM** | Linux virtual machine | SSH, Guacamole |
+| **Web Application** | Browser-based application | Direct URL, Pomerium |
+| **Remote Desktop** | RDP connections | RDP, Guacamole, TSPlus |
+| **SSH Server** | SSH terminal access | SSH, Guacamole |
+| **Guacamole Session** | Pre-configured Guacamole | Guacamole |
+| **TSPlus HTML5** | Windows desktop in browser | TSPlus |
+| **Direct Access** | External URLs | Direct link |
+
+## Launching Applications
+
+### Quick Launch
+
+The primary "Launch" button on each application tile opens the resource using the default connection method configured by your administrator.
+
+```tsx
+// From MyApplications.tsx:159
+const handleLaunch = (app: Application, openInEmbed = false) => {
+  const connectionMethod = app.connection_method?.toLowerCase();
+  const resourceType = app.resource_type?.toLowerCase();
+  
+  if (openInEmbed) {
+    navigate(`/workspace/${app.id}?type=direct`);
+    return;
+  }
+  
+  // Launch based on resource type
+}
+```
+
+### Connection Method Options
+
+Click the external link dropdown button (⋮) next to the Launch button to see additional connection options:
+
+<Tabs>
+  <Tab title="Standard Options">
+    - **Open in Workspace (Embed)**: Opens the application in an embedded iframe within the platform
+    - **Open in New Tab**: Launches the application in a new browser tab
+  </Tab>
+  <Tab title="Advanced Options">
+    For Windows VMs, Linux VMs, and RDP resources, you can choose:
+    - **Open with Guacamole**: Launch via Apache Guacamole HTML5 gateway
+    - **Open with TSPlus HTML5**: Launch via TSPlus browser-based remote desktop
+  </Tab>
+</Tabs>
+
+### Application Status Indicators
+
+Each application displays a status badge:
+
+<CardGroup cols={3}>
+  <Card title="Online" icon="circle-check" color="#10b981">
+    Application is available and ready to launch
+  </Card>
+  <Card title="Maintenance" icon="wrench" color="#f59e0b">
+    Application is temporarily unavailable for maintenance
+  </Card>
+  <Card title="Offline" icon="circle-xmark" color="#ef4444">
+    Application is not currently accessible
+  </Card>
+</CardGroup>
+
+## Organizing Applications
+
+### All Apps View
+
+The default view shows all applications you have access to in a responsive grid layout. Use the search bar to quickly filter applications by name.
+
+**UI Location:** `src/pages/MyApplications.tsx:461`
+
+### Favorites
+
+Mark frequently used applications as favorites for quick access. Favorited apps appear in the dedicated Favorites tab.
+
+**Note:** The favorite functionality is currently displayed in the UI but requires backend integration.
+
+### Recent Apps
+
+The Recent tab shows your 6 most recently accessed applications, sorted by last access time.
+
+```tsx
+// From MyApplications.tsx:292
+const recentApps = [...filteredApps].sort((a, b) => 
+  new Date(b.lastAccessed || 0).getTime() - new Date(a.lastAccessed || 0).getTime()
+).slice(0, 6);
+```
+
+## Managing Your Applications
+
+### Editing Applications
+
+Click the three-dot menu (⋮) on any application tile and select "Edit" to modify:
+
+- Application name
+- Application URL
+- Resource type
+- Connection method
+
+**Available Connection Methods:**
+
+<AccordionGroup>
+  <Accordion title="Direct URL">
+    Open in embedded browser or new tab. Best for web applications.
+  </Accordion>
+  <Accordion title="Pomerium Proxy">
+    Access through Zero Trust gateway with authentication and authorization.
+  </Accordion>
+  <Accordion title="Apache Guacamole">
+    HTML5 remote desktop supporting RDP, SSH, and VNC protocols.
+  </Accordion>
+  <Accordion title="TSPlus HTML5">
+    Windows remote desktop via browser with native-like experience.
+  </Accordion>
+  <Accordion title="SSH Terminal">
+    Secure shell access for Linux servers and network devices.
+  </Accordion>
+</AccordionGroup>
+
+**Source:** `src/components/apps/EditAppDialog.tsx:52`
+
+### Removing Applications
+
+To remove an application from your list:
+
+1. Click the three-dot menu (⋮) on the application tile
+2. Select "Remove"
+3. Confirm the removal
+
+This removes the resource from your `user_resource_access` list. You can re-add it later from the App Marketplace if access is still granted.
+
+**Implementation:** `src/pages/MyApplications.tsx:256`
+
+## Adding New Applications
+
+Click the "Add App" button in the header to browse the App Marketplace and add new applications to your portal.
+
+**Navigation:** The button redirects to `/app-marketplace` where administrators can publish new resources.
+
+## Empty States
+
+### No Applications
+
+If you don't have access to any applications yet, you'll see a helpful empty state with a call-to-action to browse the marketplace:
+
+<Info>
+  **First Time User?**  
+  Contact your administrator to request access to applications, or browse the App Marketplace to see available resources.
+</Info>
+
+### No Favorites
+
+The Favorites tab shows an empty state until you mark at least one application as a favorite.
+
+### No Recent Activity
+
+The Recent tab will be empty until you launch your first application.
+
+## Technical Implementation
+
+### Data Loading
+
+Applications are loaded from the `user_resource_access` table, which joins with the `resources` table:
+
+```tsx
+// From MyApplications.tsx:83
+const loadApplications = async () => {
+  const { data: accessData } = await supabase
+    .from('user_resource_access')
+    .select(`
+      resource_id,
+      resources (
+        id,
+        name,
+        resource_type,
+        connection_method,
+        ip_address,
+        metadata
+      )
+    `)
+    .eq('user_id', profile!.id)
+    .eq('status', 'active');
+};
+```
+
+### Session Launcher Hook
+
+The `useSessionLauncher` hook handles launching applications through different connection methods:
+
+```tsx
+// Available launch methods
+const { 
+  launching, 
+  launchGuacamole, 
+  launchTSPlus, 
+  launchRDP, 
+  launchSSH, 
+  launchDirect 
+} = useSessionLauncher();
+```
+
+### Resource Icons
+
+Each resource type has a corresponding icon for visual identification:
+
+```tsx
+// From MyApplications.tsx:123
+const getResourceIcon = (type: string) => {
+  switch (type) {
+    case 'rdp':
+    case 'windows_vm':
+      return Monitor;
+    case 'ssh':
+    case 'linux_vm':
+      return Terminal;
+    case 'guacamole_session':
+      return MonitorPlay;
+    case 'tsplus_html5':
+      return Tv;
+    case 'web_app':
+    case 'direct':
+      return Globe;
+    default:
+      return Globe;
+  }
+};
+```
+
+## User Permissions
+
+Access to applications is controlled through:
+
+1. **User Resource Access**: Direct assignment via `user_resource_access` table
+2. **Group Membership**: Inherited access through user groups
+3. **Policies**: Zero Trust policies that grant or deny access based on conditions
+
+All users can view and launch applications they have access to. Editing and removing applications only affects the user's personal view, not the resource itself.
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Organize with Favorites" icon="star">
+    Mark your most-used applications as favorites for quick access
+  </Card>
+  <Card title="Use the Right Connection" icon="link">
+    Choose the connection method that best fits your needs - embedded for quick tasks, new tab for extended sessions
+  </Card>
+  <Card title="Keep Apps Updated" icon="rotate">
+    If an application URL changes, use the Edit function to update it
+  </Card>
+  <Card title="Clean Up Unused Apps" icon="trash">
+    Remove applications you no longer need to keep your portal organized
+  </Card>
+</CardGroup>
+
+## Related Features
+
+- [Session Management](/features/session-management) - Monitor and control active application sessions
+- [Device Management](/features/device-management) - Ensure your device is enrolled to access applications
+- [Policies](/features/policies) - Understand how Zero Trust policies affect your access

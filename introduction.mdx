@@ -1,0 +1,290 @@
+---
+title: "Welcome to Nexus Access Vault"
+description: "Enterprise access management platform with SSO authentication, device enrollment, and zero-trust network access control"
+mode: "custom"
+---
+
+<div className="relative overflow-hidden bg-gradient-to-br from-[#fc5e11] via-[#fa4763] to-[#bd66ca] dark:from-[#fc5e11]/90 dark:via-[#fa4763]/90 dark:to-[#bd66ca]/90">
+  <div className="absolute inset-0 bg-black/40 dark:bg-black/60"></div>
+  <div className="relative max-w-7xl mx-auto px-6 py-20 lg:py-24">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6">
+          Nexus Access Vault
+        </h1>
+        <p className="text-lg sm:text-xl text-white/90 max-w-2xl mb-8">
+          Enterprise-grade access management platform with SSO authentication, device enrollment, application provisioning, and zero-trust network access control.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a 
+            href="/getting-started/installation" 
+            className="inline-flex items-center px-6 py-3 rounded-lg bg-white text-[#fc5e11] font-semibold hover:bg-gray-100 transition-colors"
+          >
+            Get Started
+          </a>
+          <a 
+            href="/features" 
+            className="inline-flex items-center px-6 py-3 rounded-lg border border-white/30 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors"
+          >
+            Explore Features
+          </a>
+        </div>
+      </div>
+      <div className="lg:col-span-5 flex justify-center">
+        <div className="relative w-full max-w-md">
+          <div className="aspect-square rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 p-8 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-24 h-24 mx-auto mb-4 rounded-xl bg-white/20 flex items-center justify-center">
+                <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <p className="text-white text-sm font-medium">Secure Access Control</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Quick Start</h2>
+    <p className="text-base text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+      Get up and running with Nexus Access Vault in just a few steps
+    </p>
+  </div>
+
+  <Steps>
+    <Step title="Install and Configure">
+      Deploy Nexus Access Vault using Docker or install it directly on your infrastructure. Configure your environment variables and connect to your Supabase database.
+
+      ```bash Installation
+      git clone https://github.com/infra-neo/nexus-access-vault.git
+      cd nexus-access-vault
+      cp .env.example .env
+      npm install
+      ```
+    </Step>
+
+    <Step title="Set Up SSO Authentication">
+      Configure Zitadel OIDC authentication for secure single sign-on. Create your OIDC application in Zitadel and configure the redirect URIs.
+
+      ```bash Environment Configuration
+      VITE_ZITADEL_ISSUER_URL="https://your-zitadel-instance.com"
+      VITE_ZITADEL_CLIENT_ID="your-client-id"
+      VITE_ZITADEL_REDIRECT_URI="https://your-domain.com/auth/callback"
+      ```
+
+      <Note>
+        See the [Zitadel Setup](/authentication/zitadel-setup) guide for detailed configuration instructions.
+      </Note>
+    </Step>
+
+    <Step title="Configure Your First Organization">
+      Create your organization structure and configure user groups with role-based access control. Map Zitadel groups to local permissions.
+
+      Run the application and access the admin panel to:
+      - Create your organization
+      - Configure group mappings
+      - Assign roles and permissions
+    </Step>
+
+    <Step title="Enroll Your First Device">
+      Enroll devices to your network using the built-in enrollment wizard. Devices can connect via Netbird or Tailscale for secure zero-trust access.
+
+      ```bash Device Enrollment
+      # Navigate to /enroll in your browser
+      # Follow the step-by-step wizard to:
+      # 1. Select your device type
+      # 2. Generate an enrollment token
+      # 3. Install the VPN client
+      # 4. Connect to your network
+      ```
+    </Step>
+  </Steps>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Key Features</h2>
+    <p className="text-base text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+      Everything you need for enterprise access management
+    </p>
+  </div>
+
+  <CardGroup cols={2}>
+    <Card title="SSO Authentication" icon="key" href="/authentication/zitadel-setup">
+      OIDC-based single sign-on with Zitadel integration. PKCE-secured authentication flow with automatic group synchronization.
+    </Card>
+    <Card title="Device Management" icon="mobile" href="/features/device-management">
+      Comprehensive device enrollment and management with support for multiple platforms and VPN providers.
+    </Card>
+    <Card title="Application Provisioning" icon="grid-2" href="/features/application-management">
+      Deploy and manage applications with role-based access control. Built-in marketplace for quick provisioning.
+    </Card>
+    <Card title="Zero-Trust Network" icon="shield-check" href="/infrastructure/netbird-integration">
+      Secure network access via Netbird and Tailscale integration. Network isolation with VPN-only access.
+    </Card>
+    <Card title="Multi-Tenant Organizations" icon="building" href="/features/organization-management">
+      Hierarchical organization structure with parent-child relationships and granular access control.
+    </Card>
+    <Card title="Audit Logging" icon="file-lines" href="/features/audit-logging">
+      Comprehensive audit trails for all authentication events, access requests, and administrative actions.
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Explore by Topic</h2>
+    <p className="text-base text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+      Dive deeper into specific areas of the platform
+    </p>
+  </div>
+
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <a 
+      href="/authentication/zitadel-setup" 
+      className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#fc5e11] dark:hover:border-[#fc5e11] overflow-hidden transition-colors no-underline"
+    >
+      <div className="p-6 bg-white dark:bg-[#1a1d27]">
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-[#fc5e11]/10 dark:bg-[#fc5e11]/20 flex items-center justify-center">
+            <svg className="w-6 h-6 text-[#fc5e11]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 group-hover:text-[#fc5e11] transition-colors">
+              Authentication & SSO
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+              Configure Zitadel OIDC, group mapping, and role-based access control for secure authentication.
+            </p>
+            <div className="flex items-center text-sm font-medium text-[#fc5e11] group-hover:underline">
+              Learn more
+              <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </a>
+
+    <a 
+      href="/infrastructure/netbird-integration" 
+      className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#fc5e11] dark:hover:border-[#fc5e11] overflow-hidden transition-colors no-underline"
+    >
+      <div className="p-6 bg-white dark:bg-[#1a1d27]">
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-[#fa4763]/10 dark:bg-[#fa4763]/20 flex items-center justify-center">
+            <svg className="w-6 h-6 text-[#fa4763]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 group-hover:text-[#fa4763] transition-colors">
+              Network & Infrastructure
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+              Set up zero-trust network access with Netbird, Tailscale, and Headscale integration.
+            </p>
+            <div className="flex items-center text-sm font-medium text-[#fa4763] group-hover:underline">
+              Learn more
+              <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </a>
+
+    <a 
+      href="/admin/admin-panel" 
+      className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#fc5e11] dark:hover:border-[#fc5e11] overflow-hidden transition-colors no-underline"
+    >
+      <div className="p-6 bg-white dark:bg-[#1a1d27]">
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-[#bd66ca]/10 dark:bg-[#bd66ca]/20 flex items-center justify-center">
+            <svg className="w-6 h-6 text-[#bd66ca]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 group-hover:text-[#bd66ca] transition-colors">
+              Administration
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+              Manage users, organizations, roles, permissions, and security policies from the admin panel.
+            </p>
+            <div className="flex items-center text-sm font-medium text-[#bd66ca] group-hover:underline">
+              Learn more
+              <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </a>
+
+    <a 
+      href="/api/zitadel-api" 
+      className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#fc5e11] dark:hover:border-[#fc5e11] overflow-hidden transition-colors no-underline"
+    >
+      <div className="p-6 bg-white dark:bg-[#1a1d27]">
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gray-100 dark:bg-[#242838] flex items-center justify-center">
+            <svg className="w-6 h-6 text-gray-900 dark:text-gray-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2 group-hover:text-[#fc5e11] transition-colors">
+              API Reference
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+              Explore edge functions, database schemas, and API endpoints for integration and automation.
+            </p>
+            <div className="flex items-center text-sm font-medium text-[#fc5e11] group-hover:underline">
+              View API docs
+              <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl bg-gradient-to-br from-[#fc5e11] to-[#bd66ca] p-8 lg:p-12 text-center">
+    <h2 className="text-3xl font-bold text-white mb-4">
+      Ready to Get Started?
+    </h2>
+    <p className="text-lg text-white/90 max-w-2xl mx-auto mb-8">
+      Deploy Nexus Access Vault in your infrastructure and start managing access with enterprise-grade security.
+    </p>
+    <div className="flex flex-wrap justify-center gap-4">
+      <a 
+        href="/getting-started/installation" 
+        className="inline-flex items-center px-6 py-3 rounded-lg bg-white text-[#fc5e11] font-semibold hover:bg-gray-100 transition-colors"
+      >
+        Get Started
+      </a>
+      <a 
+        href="https://github.com/infra-neo/nexus-access-vault" 
+        className="inline-flex items-center px-6 py-3 rounded-lg border border-white/30 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors"
+      >
+        View on GitHub
+      </a>
+    </div>
+  </div>
+</div>

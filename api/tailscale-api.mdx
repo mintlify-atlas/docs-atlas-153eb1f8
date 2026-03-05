@@ -1,0 +1,346 @@
+---
+title: 'Tailscale API'
+description: 'Edge Function proxy for Tailscale API operations and device management'
+---
+
+## Overview
+
+The Tailscale API Edge Function provides integration with Tailscale's network, enabling device discovery, auth key generation, enrollment validation, and device synchronization.
+
+**Endpoint:** `/functions/v1/tailscale-api?action={action}`
+
+**Authentication:** Required (Authorization header with Supabase JWT for most actions)
+
+**Method:** `POST` for most actions, `GET` for list operations
+
+## Authentication
+
+The function uses OAuth 2.0 client credentials flow to obtain Tailscale API access tokens:
+
+<ParamField env="TAILSCALE_CLIENT_ID" type="string" required>
+  Tailscale OAuth client ID
+</ParamField>
+
+<ParamField env="TAILSCALE_CLIENT_SECRET" type="string" required>
+  Tailscale OAuth client secret
+</ParamField>
+
+<ParamField env="TAILSCALE_AUTH_KEY" type="string">
+  Pre-configured Tailscale auth key (fallback if API key generation fails)
+</ParamField>
+
+## Actions
+
+### List Devices
+
+Retrieve all devices in the Tailscale network (tailnet).
+
+**Action:** `list-devices`
+
+**Authentication:** Service-level only
+
+<ResponseField name="success" type="boolean">
+  Request success status
+</ResponseField>
+
+<ResponseField name="devices" type="TailscaleDevice[]">
+  Array of Tailscale devices
+  <Expandable title="TailscaleDevice properties">
+    <ResponseField name="id" type="string">Tailscale device ID</ResponseField>
+    <ResponseField name="name" type="string">Device name</ResponseField>
+    <ResponseField name="hostname" type="string">Hostname</ResponseField>
+    <ResponseField name="user" type="string">Owner user</ResponseField>
+    <ResponseField name="ipAddresses" type="string[]">IP addresses</ResponseField>
+    <ResponseField name="lastSeen" type="string">Last seen timestamp</ResponseField>
+    <ResponseField name="online" type="boolean">Online status</ResponseField>
+    <ResponseField name="os" type="string">Operating system</ResponseField>
+    <ResponseField name="clientVersion" type="string">Tailscale version</ResponseField>
+    <ResponseField name="tags" type="string[]">ACL tags</ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash Example
+curl -X POST 'https://your-project.supabase.co/functions/v1/tailscale-api?action=list-devices' \
+  -H 'Authorization: Bearer YOUR_SERVICE_KEY'
+```
+
+### Check Device
+
+Check if a specific device exists in the Tailscale network.
+
+**Action:** `check-device`
+
+<ParamField body="identifier" type="string" required>
+  Device hostname, name, or IP address to search for
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Request success
+</ResponseField>
+
+<ResponseField name="found" type="boolean">
+  Whether device was found
+</ResponseField>
+
+<ResponseField name="online" type="boolean">
+  Device online status (if found)
+</ResponseField>
+
+<ResponseField name="device" type="object">
+  Device details (if found)
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">Device ID</ResponseField>
+    <ResponseField name="name" type="string">Device name</ResponseField>
+    <ResponseField name="hostname" type="string">Hostname</ResponseField>
+    <ResponseField name="os" type="string">Operating system</ResponseField>
+    <ResponseField name="lastSeen" type="string">Last seen timestamp</ResponseField>
+    <ResponseField name="ipAddresses" type="string[]">IP addresses</ResponseField>
+    <ResponseField name="tags" type="string[]">ACL tags</ResponseField>
+  </Expandable>
+</ResponseField>
+
+```bash Example
+curl -X POST 'https://your-project.supabase.co/functions/v1/tailscale-api?action=check-device' \
+  -H 'Authorization: Bearer YOUR_SERVICE_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier": "my-laptop"}'
+```
+
+### Generate Auth Key
+
+Generate a pre-authorized Tailscale auth key for device enrollment.
+
+**Action:** `generate-auth-key`
+
+**Authentication:** User-level required
+
+<ParamField body="deviceId" type="string">
+  Device ID to associate with auth key
+</ParamField>
+
+<ParamField body="tags" type="string[]">
+  Tailscale ACL tags to apply (default: `["tag:prod"]`)
+</ParamField>
+
+<ParamField body="group" type="string">
+  Tailscale ACL group (default: `"sap"`)
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Whether key was generated
+</ResponseField>
+
+<ResponseField name="authKey" type="string">
+  Tailscale auth key for device enrollment
+</ResponseField>
+
+<ResponseField name="expiresAt" type="string">
+  Key expiration timestamp (24 hours)
+</ResponseField>
+
+```bash Example
+curl -X POST 'https://your-project.supabase.co/functions/v1/tailscale-api?action=generate-auth-key' \
+  -H 'Authorization: Bearer YOUR_JWT' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "deviceId": "uuid-of-device",
+    "tags": ["tag:prod", "tag:user"],
+    "group": "engineering"
+  }'
+```
+
+### Validate Enrollment
+
+Validate that a device has successfully enrolled in Tailscale.
+
+**Action:** `validate-enrollment`
+
+**Authentication:** User-level required
+
+<ParamField body="deviceId" type="string" required>
+  Device ID to validate
+</ParamField>
+
+<ParamField body="hostname" type="string">
+  Expected hostname to match in Tailscale
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Request success
+</ResponseField>
+
+<ResponseField name="enrolled" type="boolean">
+  Whether device is enrolled and online
+</ResponseField>
+
+<ResponseField name="device" type="object">
+  Tailscale device details (if enrolled)
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">Tailscale device ID</ResponseField>
+    <ResponseField name="hostname" type="string">Hostname</ResponseField>
+    <ResponseField name="online" type="boolean">Online status</ResponseField>
+    <ResponseField name="ipAddresses" type="string[]">IP addresses</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Status message
+</ResponseField>
+
+```bash Example
+curl -X POST 'https://your-project.supabase.co/functions/v1/tailscale-api?action=validate-enrollment' \
+  -H 'Authorization: Bearer YOUR_JWT' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "deviceId": "uuid-of-device",
+    "hostname": "my-laptop"
+  }'
+```
+
+### Sync Devices
+
+Synchronize all Tailscale devices with local database.
+
+**Action:** `sync-devices`
+
+**Authentication:** User-level required
+
+<ResponseField name="success" type="boolean">
+  Sync success
+</ResponseField>
+
+<ResponseField name="synced" type="number">
+  Number of devices synchronized
+</ResponseField>
+
+<ResponseField name="totalTailscaleDevices" type="number">
+  Total devices in Tailscale network
+</ResponseField>
+
+```bash Example
+curl -X POST 'https://your-project.supabase.co/functions/v1/tailscale-api?action=sync-devices' \
+  -H 'Authorization: Bearer YOUR_JWT'
+```
+
+## TypeScript Interfaces
+
+```typescript TypeScript
+interface TailscaleDevice {
+  id: string
+  name: string
+  hostname: string
+  user: string
+  ipAddresses: string[]
+  lastSeen: string
+  online: boolean
+  os: string
+  clientVersion: string
+  tags?: string[]
+}
+
+interface TailscaleAuthKeyRequest {
+  capabilities: {
+    devices: {
+      create: {
+        reusable: boolean
+        ephemeral: boolean
+        preauthorized: boolean
+        tags?: string[]
+      }
+    }
+  }
+  expirySeconds?: number
+  description?: string
+}
+```
+
+## OAuth Flow
+
+The function automatically handles OAuth token acquisition:
+
+1. Requests access token from `https://api.tailscale.com/api/v2/oauth/token`
+2. Uses client credentials grant type
+3. Caches token for subsequent requests
+4. Automatically determines tailnet from token
+
+```typescript OAuth Request
+{
+  client_id: string
+  client_secret: string
+  grant_type: 'client_credentials'
+}
+```
+
+## Auth Key Configuration
+
+When generating auth keys, the function:
+
+1. **Prefers stored key:** Uses `TAILSCALE_AUTH_KEY` environment variable if available
+2. **Fallback to API:** Generates new key via Tailscale API if no stored key
+3. **Key properties:**
+   - Reusable: Yes
+   - Ephemeral: No (persistent devices)
+   - Pre-authorized: Yes (no manual approval needed)
+   - Expiry: 24 hours
+
+## Device Metadata Updates
+
+When devices enroll or sync, the `devices` table is updated with:
+
+```typescript Device Metadata
+{
+  status: 'active'
+  enrolled_at: timestamp
+  last_seen: timestamp
+  trust_level: 'high'
+  tailscale_device_id: string
+  tailscale_hostname: string
+  tailscale_ip: string
+  tailscale_os: string
+  tailscale_tags: string[]
+  metadata: {
+    tailscale_online: boolean
+    tailscale_last_seen: string
+  }
+}
+```
+
+## Device Events
+
+Logged to `device_events` table:
+
+- `tailscale_auth_key_generated` - Auth key created
+- `tailscale_enrollment_complete` - Device enrolled successfully
+- `tailscale_sync` - Device status synchronized
+
+## Error Handling
+
+<ResponseField name="error" type="string">
+  Error message
+</ResponseField>
+
+Common errors:
+
+- `Tailscale OAuth credentials not configured` - Missing client ID/secret
+- `Failed to obtain Tailscale access token` - OAuth failure
+- `Device not found in Tailscale network` - Device hasn't enrolled
+- `Failed to generate Tailscale auth key` - API key generation failed
+- `Authorization required` - Missing auth header
+- `Invalid authentication` - Invalid JWT
+
+## API Endpoints Used
+
+The function interacts with these Tailscale API endpoints:
+
+- `POST /api/v2/oauth/token` - OAuth token acquisition
+- `GET /api/v2/whoami` - Get tailnet information
+- `GET /api/v2/tailnet/{tailnet}/devices` - List devices
+- `GET /api/v2/device/{deviceId}` - Get device details
+- `POST /api/v2/tailnet/{tailnet}/keys` - Generate auth keys
+
+## Related Tables
+
+- `devices` - Local device records
+- `device_events` - Device activity log
+- `organization_tailscale_config` - Per-org Tailscale configuration
+- `audit_logs` - API call audit trail

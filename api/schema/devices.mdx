@@ -1,0 +1,464 @@
+---
+title: 'Devices Schema'
+description: 'Database schema for device enrollment, trust levels, and network integration'
+---
+
+## Overview
+
+The devices schema manages device enrollment, trust scoring, Tailscale/NetBird integration, and device lifecycle events.
+
+## Tables
+
+### devices
+
+Core device records with enrollment and trust information.
+
+```sql Schema
+CREATE TABLE public.devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  device_type TEXT NOT NULL DEFAULT 'laptop',
+  os TEXT,
+  fingerprint TEXT UNIQUE,
+  enrollment_token TEXT UNIQUE,
+  enrolled_at TIMESTAMP WITH TIME ZONE,
+  last_seen TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  location TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  trust_level TEXT NOT NULL DEFAULT 'low',
+  tailscale_auth_key TEXT,
+  tailscale_hostname TEXT,
+  tailscale_device_id TEXT,
+  tailscale_ip TEXT,
+  enrollment_expires_at TIMESTAMP WITH TIME ZONE,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Device unique identifier (auto-generated)
+</ParamField>
+
+<ParamField path="user_id" type="UUID" required>
+  Owner user ID from auth.users
+</ParamField>
+
+<ParamField path="organization_id" type="UUID">
+  Organization this device belongs to
+</ParamField>
+
+<ParamField path="name" type="TEXT" required>
+  Device name (e.g., "John's MacBook Pro")
+</ParamField>
+
+<ParamField path="device_type" type="TEXT" default="laptop">
+  Device type: `laptop`, `desktop`, `mobile`, `tablet`, `windows`, `macos`
+</ParamField>
+
+<ParamField path="os" type="TEXT">
+  Operating system (e.g., "macOS 14.0", "Windows 11")
+</ParamField>
+
+<ParamField path="fingerprint" type="TEXT">
+  Unique device fingerprint for silent enrollment (unique)
+</ParamField>
+
+<ParamField path="enrollment_token" type="TEXT">
+  Enrollment token for device registration (unique, expires)
+</ParamField>
+
+<ParamField path="enrolled_at" type="TIMESTAMPTZ">
+  Timestamp when device completed enrollment
+</ParamField>
+
+<ParamField path="last_seen" type="TIMESTAMPTZ">
+  Last activity timestamp
+</ParamField>
+
+<ParamField path="location" type="TEXT">
+  Device location (optional)
+</ParamField>
+
+<ParamField path="status" type="TEXT" default="pending">
+  Device status: `pending`, `active`, `inactive`, `revoked`
+</ParamField>
+
+<ParamField path="trust_level" type="TEXT" default="low">
+  Trust level: `low`, `medium`, `high`
+</ParamField>
+
+<ParamField path="tailscale_auth_key" type="TEXT">
+  Tailscale auth key for enrollment (cleared after use)
+</ParamField>
+
+<ParamField path="tailscale_hostname" type="TEXT">
+  Hostname in Tailscale network
+</ParamField>
+
+<ParamField path="tailscale_device_id" type="TEXT">
+  Tailscale device ID
+</ParamField>
+
+<ParamField path="tailscale_ip" type="TEXT">
+  Tailscale IP address (100.x.x.x)
+</ParamField>
+
+<ParamField path="enrollment_expires_at" type="TIMESTAMPTZ">
+  When enrollment token expires (24 hours from creation)
+</ParamField>
+
+<ParamField path="metadata" type="JSONB">
+  Additional device metadata and configuration
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Device record creation timestamp
+</ParamField>
+
+#### Indexes
+
+```sql Indexes
+CREATE INDEX idx_devices_enrollment_token 
+  ON public.devices(enrollment_token) 
+  WHERE enrollment_token IS NOT NULL;
+
+CREATE INDEX idx_devices_tailscale_device_id 
+  ON public.devices(tailscale_device_id) 
+  WHERE tailscale_device_id IS NOT NULL;
+```
+
+#### Device Statuses
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Device created but not enrolled |
+| `active` | Device enrolled and active |
+| `inactive` | Device not seen recently |
+| `revoked` | Device access revoked |
+
+#### Trust Levels
+
+| Level | Description | Requirements |
+|-------|-------------|-------------|
+| `low` | Basic trust | Token-based enrollment only |
+| `medium` | Moderate trust | Fingerprint verified |
+| `high` | High trust | Tailscale/NetBird connected |
+
+#### Metadata Fields
+
+```json Example Metadata
+{
+  "created_by": "user-uuid",
+  "tailscale_tags": ["tag:prod", "tag:user"],
+  "tailscale_group": "engineering",
+  "tailscale_online": true,
+  "tailscale_last_seen": "2024-01-15T10:30:00Z",
+  "token_validated_at": "2024-01-15T09:00:00Z",
+  "netbird_peer_id": "peer-123",
+  "device_model": "MacBook Pro 16-inch",
+  "serial_number": "C02XY123456"
+}
+```
+
+### device_events
+
+Audit trail of device lifecycle events.
+
+```sql Schema
+CREATE TABLE public.device_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  device_id UUID REFERENCES public.devices(id) ON DELETE CASCADE NOT NULL,
+  event_type TEXT NOT NULL,
+  details JSONB DEFAULT '{}'::jsonb,
+  ip_address TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Event unique identifier
+</ParamField>
+
+<ParamField path="device_id" type="UUID" required>
+  Device this event relates to
+</ParamField>
+
+<ParamField path="event_type" type="TEXT" required>
+  Event type identifier
+</ParamField>
+
+<ParamField path="details" type="JSONB">
+  Event-specific details as JSON
+</ParamField>
+
+<ParamField path="ip_address" type="TEXT">
+  IP address where event originated
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Event timestamp
+</ParamField>
+
+#### Event Types
+
+| Event Type | Description |
+|------------|-------------|
+| `pending_device_created` | Admin created pending device |
+| `enrollment_initiated` | User started enrollment process |
+| `token_validated` | Enrollment token validated |
+| `enrolled` | Device successfully enrolled |
+| `tailscale_auth_key_generated` | Tailscale key generated |
+| `tailscale_connected` | Device connected to Tailscale |
+| `tailscale_enrollment_complete` | Tailscale enrollment finished |
+| `device_revoked` | Device access revoked |
+| `device_reactivated` | Device reactivated |
+| `trust_level_changed` | Trust level updated |
+
+#### Example Event Details
+
+```json Enrollment Event
+{
+  "method": "qr_code",
+  "device_type": "laptop",
+  "os": "macOS 14.0"
+}
+```
+
+```json Tailscale Event
+{
+  "tailscale_device_id": "device-123",
+  "hostname": "johns-macbook",
+  "ip": "100.64.0.1",
+  "tags": ["tag:prod"],
+  "group": "engineering"
+}
+```
+
+### organization_tailscale_config
+
+Tailscale configuration per organization.
+
+```sql Schema
+CREATE TABLE public.organization_tailscale_config (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  tailscale_auth_key TEXT NOT NULL,
+  tags TEXT[] DEFAULT ARRAY['tag:prod'],
+  description TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  expires_at TIMESTAMP WITH TIME ZONE,
+  created_by UUID REFERENCES auth.users(id),
+  UNIQUE(organization_id, tailscale_auth_key)
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Configuration ID
+</ParamField>
+
+<ParamField path="organization_id" type="UUID" required>
+  Organization this config belongs to
+</ParamField>
+
+<ParamField path="tailscale_auth_key" type="TEXT" required>
+  Tailscale authentication key
+</ParamField>
+
+<ParamField path="tags" type="TEXT[]">
+  Default Tailscale ACL tags to apply
+</ParamField>
+
+<ParamField path="description" type="TEXT">
+  Configuration description
+</ParamField>
+
+<ParamField path="is_active" type="BOOLEAN" default="true">
+  Whether this config is active
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Creation timestamp
+</ParamField>
+
+<ParamField path="expires_at" type="TIMESTAMPTZ">
+  Key expiration timestamp
+</ParamField>
+
+<ParamField path="created_by" type="UUID">
+  Admin user who created this config
+</ParamField>
+
+## Example Queries
+
+### Create Pending Device
+
+```sql Create Device
+INSERT INTO devices (
+  user_id,
+  organization_id,
+  name,
+  device_type,
+  os,
+  enrollment_token,
+  enrollment_expires_at,
+  status,
+  trust_level
+) VALUES (
+  'user-uuid',
+  'org-uuid',
+  'MacBook Pro',
+  'laptop',
+  'macOS 14.0',
+  gen_random_uuid()::text,
+  now() + interval '24 hours',
+  'pending',
+  'low'
+)
+RETURNING id, enrollment_token;
+```
+
+### Get User Devices
+
+```sql List User Devices
+SELECT 
+  id,
+  name,
+  device_type,
+  os,
+  status,
+  trust_level,
+  tailscale_ip,
+  last_seen,
+  enrolled_at
+FROM devices
+WHERE user_id = 'user-uuid'
+ORDER BY last_seen DESC;
+```
+
+### Update Device Status
+
+```sql Activate Device
+UPDATE devices
+SET 
+  status = 'active',
+  enrolled_at = now(),
+  trust_level = 'high',
+  enrollment_token = NULL,
+  tailscale_auth_key = NULL
+WHERE id = 'device-uuid'
+RETURNING *;
+```
+
+### Get Device Events
+
+```sql Device Audit Trail
+SELECT 
+  event_type,
+  details,
+  ip_address,
+  created_at
+FROM device_events
+WHERE device_id = 'device-uuid'
+ORDER BY created_at DESC;
+```
+
+### Find Tailscale Device
+
+```sql Find by Tailscale ID
+SELECT 
+  d.*,
+  p.full_name,
+  o.name as organization_name
+FROM devices d
+JOIN profiles p ON p.id = d.user_id
+JOIN organizations o ON o.id = d.organization_id
+WHERE d.tailscale_device_id = 'ts-device-id';
+```
+
+## Row Level Security
+
+### devices
+
+```sql RLS Policies
+-- Users can view their own devices
+CREATE POLICY "Users can view their own devices"
+ON public.devices FOR SELECT
+USING (user_id = auth.uid());
+
+-- Users can insert their own devices
+CREATE POLICY "Users can insert their own devices"
+ON public.devices FOR INSERT
+WITH CHECK (user_id = auth.uid());
+
+-- Users can update their own devices
+CREATE POLICY "Users can update their own devices"
+ON public.devices FOR UPDATE
+USING (user_id = auth.uid());
+
+-- Users can delete their own devices
+CREATE POLICY "Users can delete their own devices"
+ON public.devices FOR DELETE
+USING (user_id = auth.uid());
+
+-- Admins can view all devices in their org
+CREATE POLICY "Admins can view devices in their org"
+ON public.devices FOR SELECT
+USING (
+  organization_id IN (
+    SELECT organization_id FROM profiles
+    WHERE id = auth.uid() AND role IN ('org_admin', 'global_admin')
+  )
+);
+```
+
+### device_events
+
+```sql RLS Policies
+-- Users can view events for their devices
+CREATE POLICY "Users can view their device events"
+ON public.device_events FOR SELECT
+USING (
+  device_id IN (
+    SELECT id FROM devices WHERE user_id = auth.uid()
+  )
+);
+
+-- System can insert device events
+CREATE POLICY "System can insert device events"
+ON public.device_events FOR INSERT
+WITH CHECK (true);
+```
+
+### organization_tailscale_config
+
+```sql RLS Policies
+-- Admins can manage Tailscale config
+CREATE POLICY "Admins can manage tailscale config"
+ON public.organization_tailscale_config FOR ALL
+USING (
+  organization_id = get_user_org_id(auth.uid()) 
+  AND get_user_role(auth.uid()) IN ('org_admin', 'global_admin')
+);
+```
+
+## Related Edge Functions
+
+- `/functions/v1/device-enrollment` - Device enrollment operations
+- `/functions/v1/tailscale-api` - Tailscale integration
+- `/functions/v1/netbird-proxy` - NetBird integration
+
+## Related Tables
+
+- `profiles` - Device owners
+- `organizations` - Device organization membership
+- `audit_logs` - Additional audit trail

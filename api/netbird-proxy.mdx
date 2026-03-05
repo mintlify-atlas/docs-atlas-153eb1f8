@@ -1,0 +1,310 @@
+---
+title: 'NetBird Proxy'
+description: 'Authenticated proxy for NetBird API with audit logging'
+---
+
+## Overview
+
+The NetBird Proxy Edge Function provides secure, authenticated access to NetBird API endpoints with automatic audit logging. It acts as a proxy between the Nexus Access Vault frontend and NetBird's management API.
+
+**Endpoint:** `/functions/v1/netbird-proxy?path={api_path}`
+
+**Authentication:** Required (Authorization header with Supabase JWT)
+
+**Methods:** `GET`, `POST`, `PUT`, `DELETE`, `PATCH`
+
+## Request Format
+
+### Query Parameters
+
+<ParamField query="path" type="string" default="/api/peers">
+  NetBird API path to proxy (e.g., `/api/peers`, `/api/groups`)
+</ParamField>
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Supabase JWT token: `Bearer {token}`
+</ParamField>
+
+<ParamField header="Content-Type" type="string">
+  Request content type (typically `application/json`)
+</ParamField>
+
+### Body
+
+The request body is forwarded as-is to NetBird API for non-GET requests.
+
+## Environment Configuration
+
+<ParamField env="NETBIRD_API_KEY" type="string" required>
+  NetBird API authentication token
+</ParamField>
+
+<ParamField env="NETBIRD_BASE_URL" type="string" default="https://api.netbird.io">
+  NetBird API base URL (use custom URL for self-hosted instances)
+</ParamField>
+
+<ParamField env="SUPABASE_URL" type="string" required>
+  Supabase project URL
+</ParamField>
+
+<ParamField env="SUPABASE_ANON_KEY" type="string" required>
+  Supabase anonymous key for user authentication
+</ParamField>
+
+<ParamField env="SUPABASE_SERVICE_ROLE_KEY" type="string" required>
+  Supabase service role key for audit logging
+</ParamField>
+
+## Response
+
+The function returns the exact response from NetBird API, including:
+
+- Original status code
+- Original response body
+- CORS headers enabled for browser access
+
+<ResponseField name="*" type="any">
+  Response varies based on NetBird API endpoint called
+</ResponseField>
+
+## Example Requests
+
+### List Peers
+
+```bash List All Peers
+curl -X GET 'https://your-project.supabase.co/functions/v1/netbird-proxy?path=/api/peers' \
+  -H 'Authorization: Bearer YOUR_JWT'
+```
+
+### Get Peer Details
+
+```bash Get Specific Peer
+curl -X GET 'https://your-project.supabase.co/functions/v1/netbird-proxy?path=/api/peers/peer-id' \
+  -H 'Authorization: Bearer YOUR_JWT'
+```
+
+### List Groups
+
+```bash List NetBird Groups
+curl -X GET 'https://your-project.supabase.co/functions/v1/netbird-proxy?path=/api/groups' \
+  -H 'Authorization: Bearer YOUR_JWT'
+```
+
+### Create Setup Key
+
+```bash Create Setup Key
+curl -X POST 'https://your-project.supabase.co/functions/v1/netbird-proxy?path=/api/setup-keys' \
+  -H 'Authorization: Bearer YOUR_JWT' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Laptop Key",
+    "type": "reusable",
+    "expires_in": 86400,
+    "auto_groups": ["group-id"]
+  }'
+```
+
+### Update Peer
+
+```bash Update Peer Configuration
+curl -X PUT 'https://your-project.supabase.co/functions/v1/netbird-proxy?path=/api/peers/peer-id' \
+  -H 'Authorization: Bearer YOUR_JWT' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Updated Name",
+    "ssh_enabled": true
+  }'
+```
+
+### Delete Peer
+
+```bash Delete Peer
+curl -X DELETE 'https://your-project.supabase.co/functions/v1/netbird-proxy?path=/api/peers/peer-id' \
+  -H 'Authorization: Bearer YOUR_JWT'
+```
+
+## Audit Logging
+
+Every API call through the proxy is automatically logged to the `audit_logs` table:
+
+```typescript Audit Log Entry
+{
+  user_id: string           // Authenticated user's ID
+  event: 'netbird_api_call' // Event type
+  details: {
+    method: string          // HTTP method (GET, POST, etc.)
+    path: string            // NetBird API path called
+    status: number          // Response status code
+  }
+}
+```
+
+### Audit Log Query
+
+```sql View NetBird API Calls
+SELECT 
+  user_id,
+  details->>'method' as method,
+  details->>'path' as path,
+  details->>'status' as status,
+  created_at
+FROM audit_logs
+WHERE event = 'netbird_api_call'
+ORDER BY created_at DESC;
+```
+
+## Security Features
+
+### Authentication Flow
+
+1. **Client sends request** with Supabase JWT
+2. **Function validates JWT** using Supabase Auth
+3. **Function authenticates to NetBird** using API key
+4. **Request forwarded** to NetBird API
+5. **Response returned** to client
+6. **Audit log created** in database
+
+### API Key Protection
+
+- NetBird API key stored securely in environment variables
+- Never exposed to client
+- Automatically injected into NetBird requests
+- Supports both cloud and self-hosted NetBird instances
+
+### CORS Support
+
+The function includes CORS headers:
+
+```typescript CORS Headers
+{
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+}
+```
+
+## Error Responses
+
+### Authentication Required
+
+**Status:** `401 Unauthorized`
+
+```json
+{
+  "error": "Authentication required"
+}
+```
+
+### Invalid Session
+
+**Status:** `401 Unauthorized`
+
+```json
+{
+  "error": "Invalid session"
+}
+```
+
+### NetBird API Key Not Configured
+
+**Status:** `500 Internal Server Error`
+
+```json
+{
+  "error": "NetBird API key not configured"
+}
+```
+
+### NetBird API Error
+
+The function forwards NetBird API errors with original status codes:
+
+**Status:** Varies (400, 404, 500, etc.)
+
+```json
+{
+  // Original NetBird error response
+}
+```
+
+### Proxy Error
+
+**Status:** `500 Internal Server Error`
+
+```json
+{
+  "error": "Error message describing the issue"
+}
+```
+
+## NetBird API Endpoints
+
+Common NetBird API endpoints accessible through the proxy:
+
+### Peers
+- `GET /api/peers` - List all peers
+- `GET /api/peers/{peerId}` - Get peer details
+- `PUT /api/peers/{peerId}` - Update peer
+- `DELETE /api/peers/{peerId}` - Delete peer
+
+### Groups
+- `GET /api/groups` - List groups
+- `POST /api/groups` - Create group
+- `PUT /api/groups/{groupId}` - Update group
+- `DELETE /api/groups/{groupId}` - Delete group
+
+### Setup Keys
+- `GET /api/setup-keys` - List setup keys
+- `POST /api/setup-keys` - Create setup key
+- `PUT /api/setup-keys/{keyId}` - Update setup key
+- `DELETE /api/setup-keys/{keyId}` - Delete setup key
+
+### Routes
+- `GET /api/routes` - List network routes
+- `POST /api/routes` - Create route
+- `PUT /api/routes/{routeId}` - Update route
+- `DELETE /api/routes/{routeId}` - Delete route
+
+### DNS
+- `GET /api/dns/nameservers` - List DNS nameservers
+- `POST /api/dns/nameservers` - Add nameserver
+- `GET /api/dns/settings` - Get DNS settings
+- `PUT /api/dns/settings` - Update DNS settings
+
+### Users
+- `GET /api/users` - List users
+- `GET /api/users/{userId}` - Get user details
+- `PUT /api/users/{userId}` - Update user
+- `DELETE /api/users/{userId}` - Delete user
+
+## Request Logging
+
+The function logs requests to console:
+
+```
+NetBird proxy: POST /api/setup-keys (user: user@example.com)
+```
+
+This helps with debugging and monitoring.
+
+## Self-Hosted NetBird
+
+For self-hosted NetBird instances, set the `NETBIRD_BASE_URL` environment variable:
+
+```bash Environment Variable
+NETBIRD_BASE_URL=https://netbird.yourcompany.com
+```
+
+The proxy will automatically use this URL instead of the cloud API.
+
+## Related Documentation
+
+- [NetBird API Documentation](https://docs.netbird.io/api)
+- [Supabase Edge Functions](https://supabase.com/docs/guides/functions)
+- [NetBird Integration](/infrastructure/netbird-integration)
+
+## Related Tables
+
+- `audit_logs` - API call audit trail
+- `profiles` - User authentication

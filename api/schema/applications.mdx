@@ -1,0 +1,649 @@
+---
+title: 'Applications Schema'
+description: 'Database schema for resources, access control, cloud providers, and hypervisors'
+---
+
+## Overview
+
+The applications schema manages resources (applications, VMs, servers), user access permissions, and integration with cloud providers and hypervisors.
+
+## Tables
+
+### resources
+
+Core resource/application definitions.
+
+```sql Schema
+CREATE TABLE public.resources (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  resource_type public.resource_type NOT NULL,
+  ip_address TEXT,
+  connection_method TEXT NOT NULL,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Resource unique identifier (auto-generated)
+</ParamField>
+
+<ParamField path="organization_id" type="UUID" required>
+  Organization that owns this resource
+</ParamField>
+
+<ParamField path="name" type="TEXT" required>
+  Resource name (e.g., "Production Database", "Finance App")
+</ParamField>
+
+<ParamField path="resource_type" type="resource_type" required>
+  Resource type enum value
+</ParamField>
+
+<ParamField path="ip_address" type="TEXT">
+  IP address or hostname
+</ParamField>
+
+<ParamField path="connection_method" type="TEXT" required>
+  Connection method: `guacamole`, `tsplus`, `rdp`, `ssh`, `direct`, `web`
+</ParamField>
+
+<ParamField path="metadata" type="JSONB">
+  Resource-specific configuration and connection details
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Resource creation timestamp
+</ParamField>
+
+#### Resource Types
+
+```sql Enum Definition
+CREATE TYPE public.resource_type AS ENUM (
+  'windows_vm',
+  'linux_vm',
+  'rdp',
+  'ssh',
+  'guacamole_session',
+  'tsplus_html5',
+  'tailscale_node',
+  'web_app',
+  'direct',
+  'custom'
+);
+```
+
+#### Metadata Examples
+
+**Guacamole Resource:**
+```json
+{
+  "pomerium_url": "https://access.company.com",
+  "guacamole_connection_id": "connection-123",
+  "protocol": "rdp",
+  "port": 3389
+}
+```
+
+**TSPlus Resource:**
+```json
+{
+  "tsplus_url": "https://rdp.company.com",
+  "tsplus_user": "DOMAIN\\username",
+  "target_host": "10.0.1.50",
+  "domain": "COMPANY"
+}
+```
+
+**Web Application:**
+```json
+{
+  "external_url": "https://app.company.com",
+  "icon_url": "https://app.company.com/icon.png",
+  "supports_sso": true
+}
+```
+
+**SSH Resource:**
+```json
+{
+  "pomerium_url": "https://access.company.com",
+  "ssh_connection_id": "ssh-prod-01",
+  "port": 22,
+  "username": "ubuntu"
+}
+```
+
+#### Indexes
+
+```sql Indexes
+CREATE INDEX idx_resources_organization_id ON public.resources(organization_id);
+```
+
+### user_resource_access
+
+User access permissions to resources.
+
+```sql Schema
+CREATE TABLE public.user_resource_access (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  resource_id UUID NOT NULL REFERENCES public.resources(id) ON DELETE CASCADE,
+  status public.access_status DEFAULT 'pending',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  activated_at TIMESTAMP WITH TIME ZONE,
+  revoked_at TIMESTAMP WITH TIME ZONE,
+  UNIQUE(user_id, resource_id)
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Access grant unique identifier
+</ParamField>
+
+<ParamField path="user_id" type="UUID" required>
+  User who has access
+</ParamField>
+
+<ParamField path="resource_id" type="UUID" required>
+  Resource being accessed
+</ParamField>
+
+<ParamField path="status" type="access_status" default="pending">
+  Access status: `pending`, `active`, `revoked`
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Access grant creation timestamp
+</ParamField>
+
+<ParamField path="activated_at" type="TIMESTAMPTZ">
+  When access was activated
+</ParamField>
+
+<ParamField path="revoked_at" type="TIMESTAMPTZ">
+  When access was revoked
+</ParamField>
+
+#### Access Status Enum
+
+```sql Enum Definition
+CREATE TYPE public.access_status AS ENUM (
+  'pending',   -- Access requested but not yet approved
+  'active',    -- Access granted and active
+  'revoked'    -- Access revoked
+);
+```
+
+#### Indexes
+
+```sql Indexes
+CREATE INDEX idx_user_resource_access_user_id ON public.user_resource_access(user_id);
+CREATE INDEX idx_user_resource_access_resource_id ON public.user_resource_access(resource_id);
+```
+
+### resource_permissions
+
+Drag-and-drop access control for resources.
+
+```sql Schema
+CREATE TABLE public.resource_permissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  resource_id UUID NOT NULL REFERENCES public.resources(id) ON DELETE CASCADE,
+  subject_type TEXT NOT NULL,
+  subject_id UUID NOT NULL,
+  permission_level TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(resource_id, subject_type, subject_id)
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Permission entry ID
+</ParamField>
+
+<ParamField path="resource_id" type="UUID" required>
+  Resource this permission applies to
+</ParamField>
+
+<ParamField path="subject_type" type="TEXT" required>
+  Subject type: `user`, `role`, `group`
+</ParamField>
+
+<ParamField path="subject_id" type="UUID" required>
+  ID of user, role, or group
+</ParamField>
+
+<ParamField path="permission_level" type="TEXT" required>
+  Permission level: `read`, `write`, `admin`
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Permission creation timestamp
+</ParamField>
+
+#### Permission Levels
+
+| Level | Description |
+|-------|-------------|
+| `read` | Can view and access resource |
+| `write` | Can modify resource settings |
+| `admin` | Full control including permissions |
+
+### cloud_providers
+
+Cloud provider integrations (AWS, Azure, GCP, etc.).
+
+```sql Schema
+CREATE TABLE public.cloud_providers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  provider_type TEXT NOT NULL,
+  api_endpoint TEXT,
+  credentials JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Provider configuration ID
+</ParamField>
+
+<ParamField path="organization_id" type="UUID" required>
+  Organization this provider belongs to
+</ParamField>
+
+<ParamField path="name" type="TEXT" required>
+  Provider name (e.g., "AWS Production")
+</ParamField>
+
+<ParamField path="provider_type" type="TEXT" required>
+  Provider type: `aws`, `azure`, `gcp`, `digitalocean`, `linode`
+</ParamField>
+
+<ParamField path="api_endpoint" type="TEXT">
+  API endpoint URL (for custom/private cloud)
+</ParamField>
+
+<ParamField path="credentials" type="JSONB">
+  Encrypted provider credentials
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Configuration creation timestamp
+</ParamField>
+
+#### Credentials Format
+
+**AWS:**
+```json
+{
+  "access_key_id": "AKIA...",
+  "secret_access_key": "encrypted-secret",
+  "region": "us-east-1"
+}
+```
+
+**Azure:**
+```json
+{
+  "tenant_id": "tenant-uuid",
+  "client_id": "client-uuid",
+  "client_secret": "encrypted-secret",
+  "subscription_id": "sub-uuid"
+}
+```
+
+**GCP:**
+```json
+{
+  "project_id": "my-project",
+  "private_key": "encrypted-key",
+  "client_email": "service@project.iam.gserviceaccount.com"
+}
+```
+
+### hypervisors
+
+Hypervisor integrations (Proxmox, VMware, etc.).
+
+```sql Schema
+CREATE TABLE public.hypervisors (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  hypervisor_type TEXT NOT NULL,
+  api_endpoint TEXT NOT NULL,
+  credentials JSONB,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Hypervisor configuration ID
+</ParamField>
+
+<ParamField path="organization_id" type="UUID" required>
+  Organization this hypervisor belongs to
+</ParamField>
+
+<ParamField path="name" type="TEXT" required>
+  Hypervisor name (e.g., "Proxmox Cluster 1")
+</ParamField>
+
+<ParamField path="hypervisor_type" type="TEXT" required>
+  Type: `proxmox`, `vmware`, `hyperv`, `kvm`, `xen`
+</ParamField>
+
+<ParamField path="api_endpoint" type="TEXT" required>
+  API endpoint URL
+</ParamField>
+
+<ParamField path="credentials" type="JSONB">
+  Encrypted hypervisor credentials
+</ParamField>
+
+<ParamField path="metadata" type="JSONB">
+  Additional configuration
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Configuration creation timestamp
+</ParamField>
+
+#### Credentials Format
+
+**Proxmox:**
+```json
+{
+  "username": "root@pam",
+  "password": "encrypted-password",
+  "realm": "pam",
+  "verify_ssl": false
+}
+```
+
+**VMware:**
+```json
+{
+  "username": "administrator@vsphere.local",
+  "password": "encrypted-password",
+  "datacenter": "Datacenter1"
+}
+```
+
+### ldap_configurations
+
+LDAP/Active Directory integration settings.
+
+```sql Schema
+CREATE TABLE public.ldap_configurations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  server_url TEXT NOT NULL,
+  bind_dn TEXT,
+  base_dn TEXT NOT NULL,
+  credentials JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  LDAP configuration ID
+</ParamField>
+
+<ParamField path="organization_id" type="UUID" required>
+  Organization this config belongs to
+</ParamField>
+
+<ParamField path="name" type="TEXT" required>
+  Configuration name
+</ParamField>
+
+<ParamField path="server_url" type="TEXT" required>
+  LDAP server URL (e.g., `ldap://dc.company.com:389`)
+</ParamField>
+
+<ParamField path="bind_dn" type="TEXT">
+  Bind DN for authentication
+</ParamField>
+
+<ParamField path="base_dn" type="TEXT" required>
+  Base DN for searches (e.g., `DC=company,DC=com`)
+</ParamField>
+
+<ParamField path="credentials" type="JSONB">
+  LDAP bind credentials
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Configuration creation timestamp
+</ParamField>
+
+### authentik_configurations
+
+Authentik SSO integration settings.
+
+```sql Schema
+CREATE TABLE public.authentik_configurations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  api_endpoint TEXT NOT NULL,
+  api_token TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Authentik configuration ID
+</ParamField>
+
+<ParamField path="organization_id" type="UUID" required>
+  Organization this config belongs to
+</ParamField>
+
+<ParamField path="name" type="TEXT" required>
+  Configuration name
+</ParamField>
+
+<ParamField path="api_endpoint" type="TEXT" required>
+  Authentik API endpoint URL
+</ParamField>
+
+<ParamField path="api_token" type="TEXT">
+  Authentik API token
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Configuration creation timestamp
+</ParamField>
+
+## Example Queries
+
+### Create Resource
+
+```sql Create Web App
+INSERT INTO resources (
+  organization_id,
+  name,
+  resource_type,
+  connection_method,
+  metadata
+) VALUES (
+  'org-uuid',
+  'Customer Portal',
+  'web_app',
+  'direct',
+  '{
+    "external_url": "https://portal.company.com",
+    "icon_url": "https://portal.company.com/icon.png",
+    "supports_sso": true
+  }'::jsonb
+)
+RETURNING *;
+```
+
+### Grant Access
+
+```sql Grant User Access
+INSERT INTO user_resource_access (
+  user_id,
+  resource_id,
+  status,
+  activated_at
+) VALUES (
+  'user-uuid',
+  'resource-uuid',
+  'active',
+  now()
+)
+ON CONFLICT (user_id, resource_id) 
+DO UPDATE SET 
+  status = 'active',
+  activated_at = now();
+```
+
+### Get User's Resources
+
+```sql List User Resources
+SELECT 
+  r.id,
+  r.name,
+  r.resource_type,
+  r.connection_method,
+  r.metadata,
+  ura.status,
+  ura.activated_at
+FROM resources r
+JOIN user_resource_access ura ON ura.resource_id = r.id
+WHERE ura.user_id = 'user-uuid'
+  AND ura.status = 'active'
+ORDER BY r.name;
+```
+
+### Get Resource Access List
+
+```sql Resource Access Report
+SELECT 
+  p.id as user_id,
+  p.full_name,
+  p.role,
+  ura.status,
+  ura.activated_at,
+  ura.revoked_at
+FROM user_resource_access ura
+JOIN profiles p ON p.id = ura.user_id
+WHERE ura.resource_id = 'resource-uuid'
+ORDER BY ura.status, p.full_name;
+```
+
+## Row Level Security
+
+### resources
+
+```sql RLS Policies
+-- Users can view resources in their organization
+CREATE POLICY "Users can view resources in their organization"
+ON public.resources FOR SELECT
+USING (
+  organization_id IN (
+    SELECT organization_id FROM public.profiles WHERE id = auth.uid()
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE profiles.id = auth.uid()
+    AND profiles.role = 'global_admin'
+  )
+);
+
+-- Org admins can manage resources
+CREATE POLICY "Org admins can manage resources in their org"
+ON public.resources FOR ALL
+USING (
+  organization_id IN (
+    SELECT organization_id FROM public.profiles
+    WHERE id = auth.uid()
+    AND role IN ('org_admin', 'global_admin')
+  )
+);
+```
+
+### user_resource_access
+
+```sql RLS Policies
+-- Users can view their own access
+CREATE POLICY "Users can view their own access"
+ON public.user_resource_access FOR SELECT
+USING (user_id = auth.uid());
+
+-- Admins can view all access in their org
+CREATE POLICY "Admins can view all access in their org"
+ON public.user_resource_access FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.profiles p1
+    JOIN public.profiles p2 ON p1.organization_id = p2.organization_id
+    WHERE p1.id = auth.uid()
+    AND p2.id = user_resource_access.user_id
+    AND p1.role IN ('org_admin', 'support', 'global_admin')
+  )
+);
+
+-- Admins can manage access
+CREATE POLICY "Admins can manage access in their org"
+ON public.user_resource_access FOR ALL
+USING (
+  EXISTS (
+    SELECT 1 FROM public.profiles p1
+    JOIN public.profiles p2 ON p1.organization_id = p2.organization_id
+    WHERE p1.id = auth.uid()
+    AND p2.id = user_resource_access.user_id
+    AND p1.role IN ('org_admin', 'global_admin')
+  )
+);
+```
+
+### Credential Tables
+
+```sql RLS Policies
+-- Only admins can view cloud providers
+CREATE POLICY "Only admins can view cloud providers"
+ON public.cloud_providers FOR SELECT
+USING (
+  organization_id = public.get_user_org_id(auth.uid())
+  AND public.get_user_role(auth.uid()) IN ('org_admin', 'global_admin')
+);
+
+-- Similar policies for hypervisors, LDAP, Authentik configs
+```
+
+## Related Edge Functions
+
+- `/functions/v1/session-launcher` - Launch resource sessions
+
+## Related Tables
+
+- `organizations` - Resource ownership
+- `profiles` - User access
+- `groups` - Group-based access
+- `audit_logs` - Resource access audit trail

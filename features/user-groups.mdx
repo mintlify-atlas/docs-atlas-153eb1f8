@@ -1,0 +1,555 @@
+---
+title: 'User Groups'
+description: 'Organize users and simplify permission management'
+icon: 'users'
+---
+
+User Groups allow administrators to organize users into logical collections for easier permission management, application assignment, and policy enforcement. Groups streamline access control by allowing bulk operations instead of individual user assignments.
+
+## Overview
+
+The Groups page provides tools to create, manage, and assign users to groups within your organization. Groups can be manually created or synced from LDAP/Active Directory for enterprise integration.
+
+**Key Features:**
+- Create and manage user groups
+- Assign users to multiple groups
+- Bulk application assignment to groups
+- LDAP/Active Directory integration
+- Member count tracking
+- Group-based policy application
+- Visual group management interface
+
+<Note>
+  **Permission Required:** Group management requires `org_admin` or `global_admin` role.
+</Note>
+
+## Creating Groups
+
+### Manual Group Creation
+
+Administrators can create groups manually:
+
+1. Click **Create Group** button
+2. Fill in group details:
+   - **Group Name** (required) - e.g., "Engineering", "Sales Team"
+   - **Description** (optional) - Purpose and scope of the group
+   - **LDAP DN** (optional) - Distinguished Name for LDAP sync
+3. Submit the form
+4. Group is created and appears in the list
+
+**Source:** `src/pages/Groups.tsx:185`
+
+```tsx
+<Dialog open={open} onOpenChange={setOpen}>
+  <DialogTrigger asChild>
+    <Button className="glow-neon">
+      <Plus className="h-4 w-4 mr-2" />
+      Crear Grupo
+    </Button>
+  </DialogTrigger>
+  <DialogContent className="glass">
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <Label htmlFor="name">Nombre del Grupo</Label>
+        <Input id="name" value={formData.name} required />
+      </div>
+      <div>
+        <Label htmlFor="description">Descripción</Label>
+        <Textarea id="description" value={formData.description} />
+      </div>
+      <div>
+        <Label htmlFor="ldap_dn">LDAP DN (Opcional)</Label>
+        <Input 
+          id="ldap_dn" 
+          value={formData.ldap_dn}
+          placeholder="cn=grupo,ou=grupos,dc=ejemplo,dc=com"
+        />
+      </div>
+    </form>
+  </DialogContent>
+</Dialog>
+```
+
+### Group Properties
+
+```tsx
+interface Group {
+  id: string;                  // Unique identifier
+  name: string;               // Group name
+  description: string | null;  // Optional description
+  ldap_dn: string | null;     // LDAP Distinguished Name
+  created_at: string;         // Creation timestamp
+  memberCount?: number;       // Number of users in group
+  appCount?: number;          // Number of assigned applications
+}
+```
+
+## Group Display
+
+### Group Cards
+
+Groups are displayed as cards in a responsive grid:
+
+<Frame>
+  <div style={{background: '#1e293b', padding: '1.5rem', borderRadius: '0.5rem'}}>
+    <div style={{display: 'flex', gap: '1rem', alignItems: 'start'}}>
+      <div style={{width: '48px', height: '48px', background: '#3b82f620', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+        <span style={{fontSize: '1.5rem'}}>👥</span>
+      </div>
+      <div style={{flex: 1}}>
+        <h3 style={{fontSize: '1.125rem', fontWeight: 600, marginBottom: '0.25rem'}}>Engineering Team</h3>
+        <p style={{fontSize: '0.875rem', color: '#94a3b8'}}>Developers and technical staff</p>
+      </div>
+    </div>
+    <div style={{marginTop: '1rem', display: 'flex', gap: '0.5rem'}}>
+      <span style={{background: '#334155', padding: '0.25rem 0.75rem', borderRadius: '0.25rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem'}}>
+        👥 12 miembros
+      </span>
+    </div>
+  </div>
+</Frame>
+
+**Implementation:** `src/pages/Groups.tsx:248`
+
+```tsx
+<Card key={group.id} className="glass glow-card">
+  <CardHeader>
+    <div className="flex items-start justify-between">
+      <div className="flex items-center gap-3">
+        <div className="h-12 w-12 rounded-lg bg-primary/20 flex items-center justify-center">
+          <Users className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <CardTitle className="text-lg">{group.name}</CardTitle>
+          <CardDescription>{group.description || 'Sin descripción'}</CardDescription>
+        </div>
+      </div>
+      {isAdmin && (
+        <Button variant="ghost" size="icon" onClick={() => handleDelete(group.id)}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+  </CardHeader>
+</Card>
+```
+
+### Group Statistics
+
+Each group card displays:
+
+<CardGroup cols={2}>
+  <Card title="Member Count" icon="users">
+    Number of users currently in the group
+  </Card>
+  <Card title="LDAP Badge" icon="server">
+    Indicator if group is synced from LDAP/AD
+  </Card>
+</CardGroup>
+
+```tsx
+// From Groups.tsx:274
+<div className="flex gap-2 flex-wrap">
+  <Badge variant="secondary">
+    <Users className="h-3 w-3 mr-1" />
+    {group.memberCount || 0} miembros
+  </Badge>
+  {group.ldap_dn && (
+    <Badge variant="outline">LDAP</Badge>
+  )}
+</div>
+```
+
+## Managing Group Members
+
+### Adding Members to Groups
+
+1. Click **Miembros** button on group card
+2. Opens membership management dialog
+3. Select users to add from organization
+4. Users are added to `user_groups` table
+5. Member count updates automatically
+
+**UI Component:** `GroupMembershipDialog`  
+**Source:** `src/pages/Groups.tsx:333`
+
+```tsx
+<Button 
+  variant="outline" 
+  size="sm" 
+  className="flex-1"
+  onClick={() => openMembershipDialog(group)}
+>
+  <UserPlus className="h-4 w-4 mr-1" />
+  Miembros
+</Button>
+
+{/* Dialog Component */}
+{selectedGroup && (
+  <GroupMembershipDialog
+    open={membershipDialogOpen}
+    onOpenChange={setMembershipDialogOpen}
+    groupId={selectedGroup.id}
+    groupName={selectedGroup.name}
+    onUpdated={loadGroups}
+  />
+)}
+```
+
+### Member Count Calculation
+
+```tsx
+// From Groups.tsx:78
+const loadGroups = async () => {
+  // Load groups
+  const { data: groupsData } = await supabase
+    .from('groups')
+    .select('*')
+    .eq('organization_id', profile.organization_id)
+    .order('created_at', { ascending: false });
+
+  // Load member counts
+  const { data: userGroupsData } = await supabase
+    .from('user_groups')
+    .select('group_id, user_id');
+
+  // Count members per group
+  const memberCounts: Record<string, number> = {};
+  userGroupsData?.forEach(ug => {
+    memberCounts[ug.group_id] = (memberCounts[ug.group_id] || 0) + 1;
+  });
+
+  // Enhance groups with counts
+  const enhancedGroups = (groupsData || []).map(g => ({
+    ...g,
+    memberCount: memberCounts[g.id] || 0,
+  }));
+
+  setGroups(enhancedGroups);
+};
+```
+
+## Assigning Applications to Groups
+
+### Bulk Application Assignment
+
+Groups enable efficient application assignment:
+
+1. Click **Apps** button on group card
+2. Opens application assignment dialog
+3. Select applications to assign
+4. All group members receive access
+5. Application count updates
+
+**UI Component:** `GroupAppsDialog`  
+**Source:** `src/pages/Groups.tsx:345`
+
+```tsx
+<Button 
+  variant="outline" 
+  size="sm" 
+  className="flex-1"
+  onClick={() => openAppsDialog(group)}
+>
+  <AppWindow className="h-4 w-4 mr-1" />
+  Apps
+</Button>
+
+{/* Dialog Component */}
+{selectedGroup && (
+  <GroupAppsDialog
+    open={appsDialogOpen}
+    onOpenChange={setAppsDialogOpen}
+    groupId={selectedGroup.id}
+    groupName={selectedGroup.name}
+    onUpdated={loadGroups}
+  />
+)}
+```
+
+### How Group Access Works
+
+When an application is assigned to a group:
+
+<Steps>
+  <Step title="Group-Resource Link Created">
+    Entry added to `group_resource_access` table
+  </Step>
+  <Step title="Members Inherit Access">
+    All group members automatically get access through `user_groups` relationship
+  </Step>
+  <Step title="New Members Get Access">
+    Users added to group later automatically receive all group applications
+  </Step>
+  <Step title="Removal Cascades">
+    Users removed from group lose inherited access
+  </Step>
+</Steps>
+
+## LDAP/Active Directory Integration
+
+### LDAP-Synced Groups
+
+Groups can be synchronized from LDAP or Active Directory:
+
+**LDAP DN Format:**
+```
+cn=Engineers,ou=Groups,dc=company,dc=com
+cn=Sales,ou=Departments,dc=company,dc=com
+cn=IT-Admins,ou=IT,ou=Groups,dc=company,dc=com
+```
+
+**LDAP Badge Indicator:**
+```tsx
+{group.ldap_dn && (
+  <Badge variant="outline">LDAP</Badge>
+)}
+```
+
+### LDAP Sync Benefits
+
+<CardGroup cols={2}>
+  <Card title="Automatic Membership" icon="rotate">
+    Users added to LDAP group are automatically added to Nexus group
+  </Card>
+  <Card title="Centralized Management" icon="server">
+    Manage groups in your existing directory service
+  </Card>
+  <Card title="Consistent Access" icon="check-double">
+    Permissions stay in sync across all systems
+  </Card>
+  <Card title="Reduced Admin Work" icon="gauge-high">
+    No need to maintain duplicate group structures
+  </Card>
+</CardGroup>
+
+## Deleting Groups
+
+<Warning>
+  **Important:** Deleting a group removes all member associations and may revoke inherited application access. Ensure you understand the impact before deleting.
+</Warning>
+
+### Delete Process
+
+1. Click delete icon (trash) on group card
+2. Confirm deletion
+3. Group is removed
+4. Member associations are deleted
+5. Group-based access grants are revoked
+
+```tsx
+// From Groups.tsx:139
+const handleDelete = async (id: string) => {
+  if (!confirm('¿Eliminar este grupo?')) return;
+
+  try {
+    const { error } = await supabase
+      .from('groups')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    toast({
+      title: 'Éxito',
+      description: 'Grupo eliminado',
+    });
+
+    loadGroups();
+  } catch (error: any) {
+    toast({
+      title: 'Error',
+      description: error.message,
+      variant: 'destructive',
+    });
+  }
+};
+```
+
+## Permission Control
+
+### Admin-Only Features
+
+Group management is restricted to administrators:
+
+```tsx
+// From Groups.tsx:175
+const isAdmin = profile?.role === 'org_admin' || profile?.role === 'global_admin';
+
+return (
+  <div className="space-y-6">
+    <div className="flex items-center justify-between">
+      <div>
+        <h1 className="text-3xl font-bold">Grupos de Usuarios</h1>
+        <p className="text-muted-foreground">
+          Organiza usuarios en grupos para facilitar la asignación de permisos
+        </p>
+      </div>
+      {isAdmin && (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button className="glow-neon">
+              <Plus className="h-4 w-4 mr-2" />
+              Crear Grupo
+            </Button>
+          </DialogTrigger>
+        </Dialog>
+      )}
+    </div>
+  </div>
+);
+```
+
+### Role-Based Views
+
+<Tabs>
+  <Tab title="Global Admin">
+    - View all groups across all organizations
+    - Create and delete groups in any organization
+    - Manage members and applications
+    - Configure LDAP integration
+  </Tab>
+  <Tab title="Org Admin">
+    - View groups in their organization only
+    - Create and delete groups in their org
+    - Manage members and applications
+    - Limited LDAP configuration
+  </Tab>
+  <Tab title="Regular User">
+    - Cannot access Groups page
+    - Can see their own group memberships in profile
+    - Inherit access from group assignments
+  </Tab>
+</Tabs>
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Department-Based Access">
+    Create groups for departments (Engineering, Sales, HR) and assign department-specific applications.
+    
+    **Example:**
+    - "Engineering" group gets access to GitHub, AWS Console, development servers
+    - "Sales" group gets access to CRM, sales dashboards, customer portals
+    - "HR" group gets access to HRIS, payroll systems, employee portals
+  </Accordion>
+  
+  <Accordion title="Project Teams">
+    Organize users by project for temporary application access.
+    
+    **Example:**
+    - "Project Alpha" group for users working on specific initiative
+    - Assign project-specific resources and documentation
+    - Remove group when project completes
+  </Accordion>
+  
+  <Accordion title="Role-Based Groups">
+    Create groups for job roles with different permission levels.
+    
+    **Example:**
+    - "Developers" group with read/write access
+    - "Viewers" group with read-only access
+    - "Administrators" group with full control
+  </Accordion>
+  
+  <Accordion title="Location-Based Access">
+    Organize users by office location or geographic region.
+    
+    **Example:**
+    - "US-East" group for users in eastern region
+    - "EU-Office" group for European employees
+    - Region-specific resources and compliance requirements
+  </Accordion>
+</AccordionGroup>
+
+## Empty States
+
+### No Groups Created
+
+If no groups exist in the organization:
+
+```tsx
+// From Groups.tsx:240
+<Card className="glass">
+  <CardContent className="py-12 text-center">
+    <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+    <p className="text-muted-foreground">No hay grupos creados</p>
+  </CardContent>
+</Card>
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Descriptive Names" icon="tag">
+    Use clear, descriptive names that indicate the group's purpose (e.g., "Engineering-DevOps" not "Group1")
+  </Card>
+  <Card title="Document Purpose" icon="file-text">
+    Always fill in the description field to explain what the group is for and who should be in it
+  </Card>
+  <Card title="Regular Audits" icon="clipboard-check">
+    Periodically review group memberships to ensure users have appropriate access
+  </Card>
+  <Card title="Use LDAP When Possible" icon="server">
+    Leverage LDAP/AD sync for automatic membership management
+  </Card>
+  <Card title="Avoid Over-Grouping" icon="layer-group">
+    Don't create too many groups - consolidate similar access needs
+  </Card>
+  <Card title="Test Group Access" icon="vial">
+    After creating a group and assigning apps, verify members can access resources
+  </Card>
+</CardGroup>
+
+## Technical Implementation
+
+### Database Schema
+
+```sql
+-- Groups table
+CREATE TABLE groups (
+  id UUID PRIMARY KEY,
+  organization_id UUID REFERENCES organizations(id),
+  name TEXT NOT NULL,
+  description TEXT,
+  ldap_dn TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- User-Group membership
+CREATE TABLE user_groups (
+  user_id UUID REFERENCES profiles(id),
+  group_id UUID REFERENCES groups(id),
+  PRIMARY KEY (user_id, group_id)
+);
+
+-- Group-Resource access
+CREATE TABLE group_resource_access (
+  group_id UUID REFERENCES groups(id),
+  resource_id UUID REFERENCES resources(id),
+  PRIMARY KEY (group_id, resource_id)
+);
+```
+
+### Access Resolution
+
+When a user tries to access an application:
+
+```typescript
+// Check direct user access
+const directAccess = await checkUserResourceAccess(userId, resourceId);
+
+// Check group-based access
+const userGroups = await getUserGroups(userId);
+const groupAccess = await checkGroupResourceAccess(userGroups, resourceId);
+
+// Grant access if either direct or group access exists
+const hasAccess = directAccess || groupAccess;
+```
+
+## Related Features
+
+- [Organization Management](/features/organization-management) - Groups are scoped to organizations
+- [Application Management](/features/application-management) - Users inherit app access from groups
+- [Policies](/features/policies) - Policies can be applied to groups
+- [Audit Logging](/features/audit-logging) - Group changes are logged

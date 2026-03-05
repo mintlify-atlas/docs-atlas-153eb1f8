@@ -1,0 +1,161 @@
+---
+title: User Management
+description: Manage users within your organization, assign roles, and control access
+---
+
+The **User Management** page allows administrators to view, edit, and remove users from their organization.
+
+## Access Requirements
+
+<Note>
+  User Management requires **Organization Admin** or **Global Admin** role.
+</Note>
+
+## Viewing Users
+
+The page displays all users in your organization with:
+
+- **Avatar**: First letter of user's name
+- **Full Name**: Display name of the user
+- **Creation Date**: When the user joined the organization
+- **Role Badge**: Current role assigned to the user
+
+## Creating Users
+
+Admins can create new users:
+
+1. Click **Nueva Usuario** (New User) button
+2. Fill in required fields in the dialog
+3. User is created and added to your organization
+
+<Note>
+  User creation is handled by the `CreateUserDialog` component. Users are automatically assigned to your organization.
+</Note>
+
+## Editing User Roles
+
+To change a user's role:
+
+1. Click the **Edit** icon next to the user's role badge
+2. Select new role from the dropdown:
+   - **Usuario** (User): Standard access
+   - **Soporte** (Support): Can assist users
+   - **Org Admin**: Can manage organization
+3. Role updates immediately
+
+<Warning>
+  You cannot edit your own role. This prevents accidental privilege loss.
+</Warning>
+
+## Role Types
+
+### Usuario (User)
+
+Standard user with limited permissions:
+
+- View own profile
+- Access assigned resources
+- Cannot manage other users
+
+### Soporte (Support)
+
+Support staff with elevated permissions:
+
+- View organization data
+- Assist users with access issues
+- Cannot delete users or resources
+
+### Org Admin
+
+Organization administrator with full control:
+
+- Manage all users in organization
+- Assign roles
+- Create/delete groups and resources
+- View audit logs
+
+### Global Admin
+
+<Note>
+  Global Admins are not shown in the dropdown. This role is reserved for system administrators and cannot be assigned by Org Admins.
+</Note>
+
+## Removing Users
+
+To remove a user from your organization:
+
+1. Click the **Trash** icon next to the user
+2. Confirm the deletion in the dialog
+3. User's `organization_id` is set to `null`
+4. User is removed from organization but not deleted from system
+
+<Warning>
+  **Protection**: You cannot delete yourself. The system prevents self-deletion.
+</Warning>
+
+## Role Badges
+
+Roles are visually distinguished by colored badges:
+
+| Role | Color | Label |
+|------|-------|-------|
+| Global Admin | Red | Global Admin |
+| Org Admin | Default | Org Admin |
+| Soporte | Secondary | Soporte |
+| Usuario | Secondary | Usuario |
+
+## User Cards
+
+Each user is displayed in a card with:
+
+- **Glass effect** background
+- **Glow effect** on hover
+- **Avatar** with first initial
+- **Action buttons** for edit and delete
+
+## Empty State
+
+If no users exist in your organization:
+
+- Message: "No hay usuarios en esta organización"
+- Create the first user with the **New User** button
+
+## Loading State
+
+While users are being loaded:
+
+- Animated spinner displayed
+- Message: "Cargando usuarios..."
+
+## Permissions by Role
+
+| Action | User | Support | Org Admin | Global Admin |
+|--------|------|---------|-----------|---------------|
+| View users | ❌ | ✅ | ✅ | ✅ |
+| Create users | ❌ | ❌ | ✅ | ✅ |
+| Edit roles | ❌ | ❌ | ✅ | ✅ |
+| Remove users | ❌ | ❌ | ✅ | ✅ |
+
+## Best Practices
+
+<Note>
+  **Principle of Least Privilege**: Assign the minimum role necessary for users to perform their duties. Start with Usuario and elevate only when needed.
+</Note>
+
+<Note>
+  **Regular Audits**: Periodically review user list to ensure all users still require access and have appropriate roles.
+</Note>
+
+## Integration
+
+User management integrates with:
+
+- **Groups**: Users can be assigned to groups via [Admin Panel](/admin/admin-panel)
+- **Resources**: Access is granted through group membership or direct assignment
+- **Audit Logs**: All role changes and removals are logged
+
+## Related Pages
+
+- [Admin Panel](/admin/admin-panel)
+- [Organization Structure](/admin/organization-structure)
+- [Roles & Permissions](/admin/roles-permissions)

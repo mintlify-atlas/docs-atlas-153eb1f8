@@ -1,0 +1,372 @@
+---
+title: Adding Your First Application
+description: Publish and access your first application in Nexus Access Vault
+---
+
+Learn how to add and configure applications for your users to access through Nexus Access Vault.
+
+## Understanding Applications
+
+Applications in Nexus Access Vault represent resources your users can access:
+
+- **Remote Desktops** - Windows VMs via RDP
+- **SSH Terminals** - Linux servers and VMs
+- **Web Applications** - Internal web portals
+- **Guacamole Sessions** - Browser-based remote access
+- **TSPlus HTML5** - HTML5 desktop streaming
+- **Direct URLs** - Any web-based resource
+
+## Application Types
+
+Nexus Access Vault supports various resource types:
+
+| Type | Description | Connection Method |
+|------|-------------|------------------|
+| `windows_vm` | Windows Virtual Machine | RDP, Guacamole, TSPlus |
+| `linux_vm` | Linux Virtual Machine | SSH, Guacamole |
+| `rdp` | Remote Desktop Protocol | RDP, Guacamole, TSPlus |
+| `ssh` | Secure Shell | SSH, Guacamole |
+| `web_app` | Web Application | Direct URL |
+| `guacamole_session` | Apache Guacamole | Browser-based |
+| `tsplus_html5` | TSPlus HTML5 | Browser-based |
+| `direct` | Direct URL Access | Browser |
+
+## Adding an Application
+
+<Steps>
+  <Step title="Navigate to App Marketplace">
+    From the dashboard, click **"My Applications"** in the sidebar, then click the **"Add App"** button.
+
+    Alternatively, go to **App Marketplace** to browse available applications.
+  </Step>
+
+  <Step title="Select application type">
+    Choose the type of resource you want to add:
+
+    - Desktop applications (RDP, Guacamole, TSPlus)
+    - Terminal access (SSH)
+    - Web applications (Direct URL)
+  </Step>
+
+  <Step title="Configure application details">
+    Fill in the application information:
+
+    ```typescript
+    {
+      name: "Production Server",           // Display name
+      resource_type: "windows_vm",          // Type of resource
+      connection_method: "rdp",             // Primary connection
+      ip_address: "192.168.1.100",         // Internal IP
+      metadata: {
+        external_url: "https://server.local",  // Optional
+        logo: "neogenesys-logo",              // Optional logo
+        port: 3389,                            // Connection port
+        description: "Production Windows Server"
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Configure access permissions">
+    Grant access to specific users or groups through the `user_resource_access` table.
+
+    <Note>
+      Access permissions must be configured by an administrator in the Supabase dashboard or via the admin panel.
+    </Note>
+  </Step>
+
+  <Step title="Launch the application">
+    Once added, the application appears in your **My Applications** view:
+
+    - Click **"Launch"** to open in a new tab
+    - Use the dropdown menu to select connection method
+    - Click **"Open in Workspace"** for embedded access
+  </Step>
+</Steps>
+
+## Example: Adding a Windows RDP Server
+
+Here's how to add a Windows Remote Desktop:
+
+<CodeGroup>
+```sql Supabase SQL
+-- Insert a new Windows VM resource
+INSERT INTO resources (
+  name,
+  resource_type,
+  connection_method,
+  ip_address,
+  metadata
+) VALUES (
+  'Windows Production Server',
+  'windows_vm',
+  'rdp',
+  '192.168.1.100',
+  '{
+    "port": 3389,
+    "description": "Main production server",
+    "status": "online"
+  }'
+);
+
+-- Grant access to a user
+INSERT INTO user_resource_access (
+  user_id,
+  resource_id,
+  status
+) VALUES (
+  'user-uuid-here',
+  'resource-uuid-here',
+  'active'
+);
+```
+
+```typescript TypeScript API
+import { supabase } from '@/integrations/supabase/client';
+
+// Create resource
+const { data: resource, error } = await supabase
+  .from('resources')
+  .insert({
+    name: 'Windows Production Server',
+    resource_type: 'windows_vm',
+    connection_method: 'rdp',
+    ip_address: '192.168.1.100',
+    metadata: {
+      port: 3389,
+      description: 'Main production server',
+      status: 'online'
+    }
+  })
+  .select()
+  .single();
+
+// Grant access
+await supabase
+  .from('user_resource_access')
+  .insert({
+    user_id: userId,
+    resource_id: resource.id,
+    status: 'active'
+  });
+```
+</CodeGroup>
+
+## Example: Adding a Web Application
+
+Add a web-based application accessible via URL:
+
+```typescript
+// Direct URL application
+const webApp = {
+  name: 'Company Intranet',
+  resource_type: 'web_app',
+  connection_method: 'direct',
+  ip_address: 'https://intranet.company.local',
+  metadata: {
+    external_url: 'https://intranet.company.local',
+    description: 'Internal company portal',
+    logo: 'neogenesys-logo'
+  }
+};
+```
+
+## Launching Applications
+
+Users can launch applications with different methods:
+
+### New Tab Launch
+
+Opens the application in a new browser tab:
+
+```typescript
+const handleLaunch = (app: Application) => {
+  if (app.resource_type === 'web_app') {
+    launchDirect(app.id);  // Opens external_url
+  } else if (app.resource_type === 'rdp') {
+    launchRDP(app.id);     // Launches RDP session
+  } else if (app.resource_type === 'ssh') {
+    launchSSH(app.id);     // Opens SSH terminal
+  }
+};
+```
+
+### Embedded Workspace
+
+Opens the application within the Nexus Access Vault interface:
+
+```typescript
+// Navigate to embedded workspace
+navigate(`/workspace/${app.id}?type=direct`);
+```
+
+### Connection Method Selection
+
+For resources supporting multiple connections:
+
+```typescript
+// Windows VM supports RDP, Guacamole, and TSPlus
+const supportsMultiple = ['windows_vm', 'linux_vm', 'rdp'].includes(
+  app.resource_type
+);
+
+// User can choose:
+// - Open with Guacamole (browser-based)
+// - Open with TSPlus HTML5 (HTML5 streaming)
+// - Download RDP file (native client)
+```
+
+## Application Icons
+
+Customize application appearance with icons:
+
+```typescript
+const getResourceIcon = (type: string) => {
+  switch (type) {
+    case 'rdp':
+    case 'windows_vm':
+      return Monitor;        // Desktop icon
+    case 'ssh':
+    case 'linux_vm':
+      return Terminal;       // Terminal icon
+    case 'guacamole_session':
+      return MonitorPlay;    // Guacamole icon
+    case 'tsplus_html5':
+      return Tv;            // TSPlus icon
+    case 'web_app':
+    case 'direct':
+      return Globe;         // Web icon
+    default:
+      return Globe;
+  }
+};
+```
+
+### Custom Logos
+
+Add custom logos via metadata:
+
+```typescript
+metadata: {
+  logo: 'neogenesys-logo',  // Use predefined logo
+  // or
+  logo_url: 'https://cdn.company.com/logo.png'  // Custom URL
+}
+```
+
+## Application Status
+
+Track application availability:
+
+- **Online** - Application is available
+- **Offline** - Application is unavailable
+- **Maintenance** - Under maintenance
+
+```typescript
+metadata: {
+  status: 'online' | 'offline' | 'maintenance'
+}
+```
+
+<Warning>
+  Users cannot launch applications marked as `offline` or `maintenance`.
+</Warning>
+
+## Managing Applications
+
+Users can manage their applications from the My Applications page:
+
+### Edit Application
+
+Update application details:
+
+```typescript
+const handleEdit = async (data) => {
+  await supabase
+    .from('resources')
+    .update({
+      name: data.name,
+      resource_type: data.resourceType,
+      connection_method: data.connectionMethod,
+      ip_address: data.url,
+      metadata: {
+        ...existingMetadata,
+        external_url: data.url
+      }
+    })
+    .eq('id', data.id);
+};
+```
+
+### Remove Application
+
+Users can remove applications from their view:
+
+```typescript
+// Removes from user_resource_access, not from resources table
+await supabase
+  .from('user_resource_access')
+  .delete()
+  .eq('user_id', userId)
+  .eq('resource_id', appId);
+```
+
+## Organizing Applications
+
+The My Applications page provides organization features:
+
+### Search and Filter
+
+```typescript
+const filteredApps = applications.filter(app =>
+  app.name.toLowerCase().includes(searchQuery.toLowerCase())
+);
+```
+
+### Favorites
+
+Mark frequently used applications:
+
+```typescript
+metadata: {
+  favorite: true
+}
+```
+
+### Recent Applications
+
+Automatically tracks recently accessed apps:
+
+```typescript
+const recentApps = apps.sort((a, b) => 
+  new Date(b.lastAccessed).getTime() - new Date(a.lastAccessed).getTime()
+).slice(0, 6);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Device Enrollment" icon="mobile" href="/getting-started/device-enrollment">
+    Secure device access with enrollment
+  </Card>
+  <Card title="Connection Methods" icon="plug" href="/features/application-management">
+    Learn about different connection types
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Application Not Showing
+
+Verify the user has active access in `user_resource_access` table.
+
+### Connection Failed
+
+Check:
+- IP address is correct and reachable
+- Firewall allows connections on the specified port
+- Application status is "online"
+
+### Launch Button Disabled
+
+Application status must be "online" to launch. Check `metadata.status`.

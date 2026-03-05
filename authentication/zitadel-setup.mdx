@@ -1,0 +1,296 @@
+---
+title: 'Setting up Zitadel OIDC'
+description: 'Complete guide to configure Zitadel OIDC authentication for Nexus Access Vault'
+---
+
+## Overview
+
+Nexus Access Vault uses Zitadel as its identity provider, implementing a secure OIDC (OpenID Connect) authentication flow with PKCE (Proof Key for Code Exchange). This guide walks you through the complete setup process.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- A Zitadel instance running (e.g., `https://manager.kappa4.com`)
+- Administrative access to your Zitadel console
+- Access to your Nexus Access Vault database
+- Netbird VPN configured (if using internal network mode)
+
+## Step 1: Create OIDC Application in Zitadel
+
+### Configure the Application
+
+1. Log in to your Zitadel console at `https://manager.kappa4.com`
+2. Navigate to your project
+3. Click **Applications** > **New Application**
+4. Configure the following settings:
+
+**Application Type**
+- Select: **Web**
+- Authentication Method: **PKCE** (Public Client)
+
+<Warning>
+  Always use PKCE for public clients. This prevents authorization code interception attacks by ensuring the client that initiated the flow is the same one exchanging the code for tokens.
+</Warning>
+
+**Redirect URIs**
+
+Add your callback URLs based on your deployment environment:
+
+```bash
+# Development
+http://localhost:8080/auth/callback
+
+# Production (Netbird Internal Network)
+http://<netbird-internal-ip>:8080/auth/callback
+
+# Production (With Domain)
+https://<internal-domain>/auth/callback
+```
+
+### Configure Required Scopes
+
+Ensure the following scopes are enabled for your application:
+
+| Scope | Purpose |
+|-------|--------|
+| `openid` | Required for OIDC authentication |
+| `profile` | Retrieves user's name and profile info |
+| `email` | Retrieves user's email address |
+| `urn:zitadel:iam:org:project:id:zitadel:aud` | Includes organization and role claims |
+
+## Step 2: Configure Role Claims
+
+To enable role-based access control:
+
+1. In your Zitadel project, navigate to **Roles**
+2. Create the following roles:
+   - `admin` or `administrator` - Full system access
+   - `org_admin` - Organization administration
+   - `support` or `helpdesk` - Support access
+   - `user` or `member` - Standard user access
+
+3. Ensure roles are included in ID tokens:
+   - Go to **Project Settings** > **Token Settings**
+   - Enable **Include roles in ID token**
+   - Enable **Include organization info in claims**
+
+## Step 3: Create Service Account (Optional)
+
+For automatic group synchronization, create a service account with Management API access:
+
+1. Navigate to **Service Users** > **New Service User**
+2. Create a service account (e.g., `nexus-sync-service`)
+3. Grant the following permissions:
+
+```
+org.grant.read
+org.member.read
+project.role.read
+user.grant.read
+```
+
+4. Generate a **Personal Access Token (PAT)**:
+   - Go to the service account details
+   - Click **Personal Access Tokens** > **New**
+   - Copy the token immediately (it won't be shown again)
+
+<Warning>
+  Store the service account token securely. It provides read access to your organization's user and role information.
+</Warning>
+
+## Step 4: Configure Environment Variables
+
+Add the following to your `.env` file:
+
+```bash
+# Zitadel OIDC Configuration
+VITE_ZITADEL_ISSUER_URL="https://manager.kappa4.com"
+VITE_ZITADEL_CLIENT_ID="<your-client-id-from-zitadel>"
+VITE_ZITADEL_REDIRECT_URI="http://<netbird-internal-ip>:8080/auth/callback"
+
+# Network Mode (optional)
+VITE_NETWORK_MODE="internal"
+VITE_INTERNAL_HOST="<netbird-internal-ip-or-dns>"
+```
+
+<Note>
+  The `VITE_NETWORK_MODE` setting restricts access to internal network only when set to `"internal"`. This requires users to be connected to your Netbird VPN.
+</Note>
+
+## Step 5: Database Configuration
+
+Insert the Zitadel configuration into your Supabase database:
+
+```sql
+INSERT INTO zitadel_configurations (
+  organization_id,
+  name,
+  issuer_url,
+  client_id,
+  redirect_uri,
+  scopes,
+  api_token,
+  sync_groups,
+  is_active
+) VALUES (
+  '<your-org-id>',
+  'Kappa4 Manager',
+  'https://manager.kappa4.com',
+  '<client-id-from-zitadel>',
+  'http://<netbird-ip>:8080/auth/callback',
+  ARRAY['openid', 'profile', 'email', 'urn:zitadel:iam:org:project:id:zitadel:aud'],
+  '<service-account-pat-if-available>',
+  true,  -- Enable automatic group sync
+  true   -- Make this configuration active
+);
+```
+
+## Step 6: Test the Connection
+
+Verify your configuration is working:
+
+```typescript
+// The portal includes a connection test endpoint
+const response = await fetch(
+  `${SUPABASE_URL}/functions/v1/zitadel-api?action=test-connection`,
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({
+      issuerUrl: 'https://manager.kappa4.com',
+      apiToken: '<your-service-account-token>'
+    })
+  }
+);
+
+const result = await response.json();
+console.log(result);
+// Expected: { success: true, apiConnected: true, groupCount: X }
+```
+
+## Netbird Network Configuration (Optional)
+
+If you want to restrict access to the internal Netbird network:
+
+### Install Netbird on Server
+
+```bash
+curl -fsSL https://pkgs.netbird.io/install.sh | sh
+netbird up --setup-key <your-setup-key>
+```
+
+### Get Internal IP
+
+```bash
+netbird status
+# Note the IP address assigned to your netbird interface
+```
+
+### Configure Firewall
+
+```bash
+# Example with ufw (Ubuntu)
+sudo ufw allow from <netbird-subnet> to any port 8080
+sudo ufw deny 8080
+```
+
+This ensures only users connected to your Netbird VPN can access the portal.
+
+## Security Considerations
+
+<Warning>
+  **Critical Security Requirements:**
+  
+  - Always use HTTPS in production (except for internal Netbird networks)
+  - Never expose your service account token in client-side code
+  - Regularly rotate service account tokens
+  - Implement rate limiting on authentication endpoints
+  - Monitor failed authentication attempts
+</Warning>
+
+### PKCE Implementation
+
+The portal uses PKCE (Proof Key for Code Exchange) to prevent authorization code interception:
+
+1. **Code Verifier**: A cryptographically random 32-byte string
+2. **Code Challenge**: SHA-256 hash of the code verifier
+3. **Challenge Method**: Always `S256` (SHA-256)
+
+From `src/hooks/useZitadelSSO.ts:33-49`:
+
+```typescript
+const generatePKCE = async () => {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  const codeVerifier = btoa(String.fromCharCode(...array))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+
+  return { codeVerifier, codeChallenge };
+};
+```
+
+### State Parameter Protection
+
+The state parameter prevents CSRF attacks during the OAuth flow:
+
+```typescript
+// Generate random state (from useZitadelSSO.ts:60-65)
+const stateArray = new Uint8Array(32);
+crypto.getRandomValues(stateArray);
+const state = btoa(String.fromCharCode(...stateArray))
+  .replace(/\+/g, '-')
+  .replace(/\//g, '_')
+  .replace(/=/g, '');
+```
+
+## Troubleshooting
+
+### Authentication Fails
+
+**Symptoms**: User sees "Authentication failed" error
+
+**Solutions**:
+- Verify the client ID matches exactly
+- Check redirect URI includes correct protocol and port
+- Ensure Zitadel issuer URL is accessible
+- Check browser console for detailed error messages
+
+### Groups Not Syncing
+
+**Symptoms**: User logs in but has no permissions
+
+**Solutions**:
+- Verify service account token has `org.grant.read` permission
+- Check edge function logs: `supabase functions logs zitadel-api`
+- Ensure user has roles assigned in Zitadel project
+- Verify `sync_groups` is set to `true` in database configuration
+
+### PKCE Errors
+
+**Symptoms**: "Invalid code verifier" error
+
+**Solutions**:
+- Ensure Zitadel application is configured for PKCE
+- Verify code challenge method is set to `S256`
+- Check that sessionStorage/localStorage is available in browser
+- Clear browser storage and try again
+
+## Next Steps
+
+- [Configure OIDC settings](/authentication/oidc-configuration)
+- [Set up group mapping](/authentication/group-mapping)
+- [Implement role-based access control](/authentication/role-based-access)

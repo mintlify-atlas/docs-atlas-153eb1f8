@@ -1,0 +1,521 @@
+---
+title: Hypervisors
+description: Manage on-premises hypervisors and private cloud infrastructure
+---
+
+## Overview
+
+Nexus Access Vault provides centralized management for on-premises hypervisors and private cloud platforms. Connect to VMware, Proxmox, Hyper-V, KVM, and other virtualization platforms to manage VMs, hosts, and resources.
+
+## Supported Hypervisors
+
+<CardGroup cols={3}>
+  <Card title="VMware ESXi/vSphere" icon="server">
+    Enterprise virtualization platform
+  </Card>
+  <Card title="Proxmox VE" icon="cube">
+    Open-source virtualization management
+  </Card>
+  <Card title="Microsoft Hyper-V" icon="microsoft">
+    Windows Server virtualization
+  </Card>
+  <Card title="KVM/QEMU" icon="linux">
+    Kernel-based virtual machine
+  </Card>
+  <Card title="Citrix XenServer" icon="server">
+    Enterprise virtualization solution
+  </Card>
+  <Card title="oVirt" icon="cube">
+    Open-source virtualization management
+  </Card>
+</CardGroup>
+
+## Database Schema
+
+Hypervisor configurations are stored in the `hypervisors` table:
+
+```sql
+CREATE TABLE hypervisors (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  name TEXT NOT NULL,
+  hypervisor_type TEXT NOT NULL,
+  api_endpoint TEXT NOT NULL,
+  credentials JSONB NOT NULL, -- encrypted
+  metadata JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+## Adding Hypervisors
+
+### Via Portal UI
+
+Navigate to the Hypervisors page (`src/pages/Hypervisors.tsx`) and click "Add Hypervisor":
+
+1. Enter a descriptive name (e.g., "Proxmox Datacenter 1")
+2. Select hypervisor type from dropdown
+3. Enter API endpoint URL
+4. Optionally specify physical location
+5. Provide authentication credentials
+6. Click "Add Hypervisor"
+
+### Programmatically
+
+```typescript
+const { error } = await supabase
+  .from('hypervisors')
+  .insert({
+    organization_id: profile.organization_id,
+    name: 'Proxmox Datacenter 1',
+    hypervisor_type: 'proxmox',
+    api_endpoint: 'https://proxmox.local:8006',
+    metadata: { location: 'Datacenter Principal, Rack A' },
+    credentials: {
+      username: 'root@pam',
+      password: 'secure-password',
+    },
+  });
+```
+
+## Hypervisor-Specific Configuration
+
+### VMware ESXi / vSphere
+
+**API Endpoint Format:**
+```
+https://vcenter.example.com/sdk
+```
+
+**Required Credentials:**
+```typescript
+credentials: {
+  username: 'administrator@vsphere.local',
+  password: 'secure-password',
+  domain: 'vsphere.local' // optional
+}
+```
+
+**Configuration Steps:**
+
+<Steps>
+  <Step title="Enable API Access">
+    Ensure the vSphere API is enabled (default on vCenter)
+  </Step>
+  <Step title="Create Service Account">
+    Create a dedicated user account with read-only or admin permissions
+  </Step>
+  <Step title="Note API Endpoint">
+    Use the vCenter hostname/IP with `/sdk` path
+  </Step>
+  <Step title="Test Connection">
+    Verify connectivity using PowerCLI or API client
+  </Step>
+</Steps>
+
+### Proxmox VE
+
+**API Endpoint Format:**
+```
+https://proxmox.local:8006
+```
+
+**Required Credentials:**
+```typescript
+credentials: {
+  username: 'root@pam',
+  password: 'secure-password',
+  // OR use API token
+  token_id: 'root@pam!mytoken',
+  token_secret: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'
+}
+```
+
+**Configuration Steps:**
+
+<Steps>
+  <Step title="Access Proxmox UI">
+    Log in to Proxmox web interface at https://proxmox.local:8006
+  </Step>
+  <Step title="Create API Token">
+    Navigate to Datacenter → Permissions → API Tokens
+  </Step>
+  <Step title="Generate Token">
+    Create a new token with appropriate privileges
+  </Step>
+  <Step title="Add to Portal">
+    Use token credentials in Nexus Access Vault
+  </Step>
+</Steps>
+
+**API Token Example:**
+```bash
+curl -k -d "username=root@pam&password=yourpassword" \
+  https://proxmox.local:8006/api2/json/access/ticket
+```
+
+### Microsoft Hyper-V
+
+**API Endpoint Format:**
+```
+https://hyperv-host.local:5986
+```
+
+**Required Credentials:**
+```typescript
+credentials: {
+  username: 'DOMAIN\\Administrator',
+  password: 'secure-password'
+}
+```
+
+**Configuration Steps:**
+
+<Steps>
+  <Step title="Enable WinRM">
+    Enable Windows Remote Management on the Hyper-V host
+  </Step>
+  <Step title="Configure HTTPS Listener">
+    Set up WinRM HTTPS listener on port 5986
+  </Step>
+  <Step title="Configure Firewall">
+    Allow port 5986 through Windows Firewall
+  </Step>
+  <Step title="Test Connection">
+    Verify using PowerShell:
+    ```powershell
+    Test-WSMan -ComputerName hyperv-host.local -UseSSL
+    ```
+  </Step>
+</Steps>
+
+### KVM/QEMU (libvirt)
+
+**API Endpoint Format:**
+```
+qemu+ssh://root@kvm-host.local/system
+```
+
+**Required Credentials:**
+```typescript
+credentials: {
+  username: 'root',
+  password: 'secure-password',
+  // OR use SSH key
+  ssh_key: '-----BEGIN OPENSSH PRIVATE KEY-----\n...'
+}
+```
+
+**Configuration Steps:**
+
+<Steps>
+  <Step title="Install libvirt">
+    Ensure libvirtd is running:
+    ```bash
+    systemctl status libvirtd
+    ```
+  </Step>
+  <Step title="Configure SSH Access">
+    Set up SSH key authentication for remote access
+  </Step>
+  <Step title="Test Connection">
+    Verify using virsh:
+    ```bash
+    virsh -c qemu+ssh://root@kvm-host.local/system list
+    ```
+  </Step>
+</Steps>
+
+### Citrix XenServer
+
+**API Endpoint Format:**
+```
+https://xenserver.local
+```
+
+**Required Credentials:**
+```typescript
+credentials: {
+  username: 'root',
+  password: 'secure-password'
+}
+```
+
+## Portal UI Component
+
+The Hypervisors page (`src/pages/Hypervisors.tsx`) provides a management interface:
+
+### Features
+
+- **List View**: Display all configured hypervisors
+- **Add Dialog**: Modal form to add new hypervisors
+- **Hypervisor Cards**: Visual cards showing hypervisor details
+- **Delete Action**: Remove hypervisor configurations
+- **Location Metadata**: Track physical location of hosts
+
+### Component Structure
+
+```tsx
+interface Hypervisor {
+  id: string;
+  name: string;
+  hypervisor_type: string;
+  api_endpoint: string;
+  metadata: any;
+  created_at: string;
+}
+
+const loadHypervisors = async () => {
+  const { data, error } = await supabase
+    .from('hypervisors')
+    .select('id, name, hypervisor_type, api_endpoint, metadata, created_at')
+    .eq('organization_id', profile.organization_id)
+    .order('created_at', { ascending: false });
+};
+```
+
+## Metadata Fields
+
+Store additional information in the `metadata` JSONB column:
+
+```typescript
+metadata: {
+  location: 'Datacenter Principal, Rack A',
+  ip_address: '192.168.1.100',
+  total_memory: '512GB',
+  total_cpu: '64 cores',
+  version: '7.2',
+  cluster_name: 'Production Cluster',
+  tags: ['production', 'critical']
+}
+```
+
+## Security Best Practices
+
+<Warning>
+  **Credential Protection**: Hypervisor credentials provide full access to your virtual infrastructure. Store them encrypted and restrict access to authorized personnel only.
+</Warning>
+
+### Recommendations
+
+1. **Use Dedicated Accounts**: Create service accounts specifically for API access
+2. **Least Privilege**: Grant minimal permissions required (prefer read-only)
+3. **Network Isolation**: Access hypervisor APIs only through secure networks (VPN)
+4. **Certificate Validation**: Verify SSL certificates for API endpoints
+5. **Credential Rotation**: Regularly rotate passwords and API tokens
+6. **Audit Logging**: Monitor API access logs on hypervisor platforms
+7. **IP Restrictions**: Limit API access by source IP when supported
+8. **Two-Factor Authentication**: Enable 2FA on hypervisor accounts
+
+## SSL/TLS Configuration
+
+Many hypervisors use self-signed certificates. Handle these appropriately:
+
+### Accept Self-Signed Certificates (Development Only)
+
+```typescript
+// NOT recommended for production
+const agent = new https.Agent({
+  rejectUnauthorized: false
+});
+```
+
+### Trust Custom CA (Production)
+
+```typescript
+import fs from 'fs';
+
+const ca = fs.readFileSync('/path/to/ca-cert.pem');
+const agent = new https.Agent({ ca });
+```
+
+## API Integration Examples
+
+### Proxmox VE - List VMs
+
+```typescript
+import axios from 'axios';
+
+const { data: hypervisor } = await supabase
+  .from('hypervisors')
+  .select('api_endpoint, credentials')
+  .eq('id', hypervisorId)
+  .single();
+
+// Authenticate
+const authResponse = await axios.post(
+  `${hypervisor.api_endpoint}/api2/json/access/ticket`,
+  {
+    username: hypervisor.credentials.username,
+    password: hypervisor.credentials.password,
+  },
+  { httpsAgent: new https.Agent({ rejectUnauthorized: false }) }
+);
+
+const ticket = authResponse.data.data.ticket;
+const csrfToken = authResponse.data.data.CSRFPreventionToken;
+
+// List VMs
+const vmsResponse = await axios.get(
+  `${hypervisor.api_endpoint}/api2/json/cluster/resources?type=vm`,
+  {
+    headers: {
+      Cookie: `PVEAuthCookie=${ticket}`,
+      CSRFPreventionToken: csrfToken,
+    },
+  }
+);
+
+console.log('VMs:', vmsResponse.data.data);
+```
+
+### VMware vSphere - List VMs
+
+```typescript
+import { VimClient } from 'vsphere-connect';
+
+const client = new VimClient({
+  host: 'vcenter.example.com',
+  username: hypervisor.credentials.username,
+  password: hypervisor.credentials.password,
+  ignoreSSL: false,
+});
+
+await client.login();
+const vms = await client.listVirtualMachines();
+console.log('VMs:', vms);
+await client.logout();
+```
+
+### Hyper-V - List VMs (PowerShell via WinRM)
+
+```typescript
+import { Client } from 'node-winrm';
+
+const client = new Client({
+  host: 'hyperv-host.local',
+  port: 5986,
+  username: hypervisor.credentials.username,
+  password: hypervisor.credentials.password,
+});
+
+const result = await client.runPowerShell('Get-VM');
+console.log('VMs:', result.stdout);
+```
+
+## Monitoring and Health Checks
+
+### Connection Health
+
+Implement periodic health checks:
+
+```typescript
+const checkHypervisorHealth = async (hypervisor: Hypervisor) => {
+  try {
+    switch (hypervisor.hypervisor_type) {
+      case 'proxmox':
+        // Test Proxmox API
+        await axios.get(`${hypervisor.api_endpoint}/api2/json/version`);
+        break;
+      case 'vmware':
+        // Test vSphere API
+        // Implement vCenter connection test
+        break;
+      case 'hyperv':
+        // Test WinRM connection
+        // Implement WinRM test
+        break;
+    }
+    return { status: 'healthy', lastCheck: new Date() };
+  } catch (error) {
+    return { status: 'error', error: error.message };
+  }
+};
+```
+
+### Resource Monitoring
+
+Track hypervisor resource utilization:
+
+```typescript
+const getResourceStats = async (hypervisor: Hypervisor) => {
+  // Fetch CPU, memory, storage usage from hypervisor API
+  return {
+    cpu_usage: 45.2,
+    memory_usage: 78.5,
+    storage_usage: 62.1,
+    vm_count: 24,
+    running_vms: 18,
+  };
+};
+```
+
+## Troubleshooting
+
+### Connection Refused
+
+**Problem**: Cannot connect to hypervisor API
+
+**Solutions**:
+1. Verify API endpoint URL is correct
+2. Check hypervisor firewall allows incoming connections
+3. Test connectivity:
+   ```bash
+   telnet proxmox.local 8006
+   curl -k https://proxmox.local:8006/api2/json/version
+   ```
+
+### SSL Certificate Errors
+
+**Problem**: "SSL certificate problem: self signed certificate"
+
+**Solutions**:
+1. Add CA certificate to trusted store (production)
+2. Use `rejectUnauthorized: false` for testing only
+3. Verify certificate chain:
+   ```bash
+   openssl s_client -connect proxmox.local:8006
+   ```
+
+### Authentication Failed
+
+**Problem**: Invalid credentials or permission denied
+
+**Solutions**:
+1. Verify username and password are correct
+2. Check account has necessary permissions
+3. For Proxmox, verify realm (e.g., `@pam`, `@pve`)
+4. For VMware, check domain format
+
+### API Rate Limiting
+
+**Problem**: Too many requests to hypervisor API
+
+**Solutions**:
+1. Implement request throttling
+2. Cache API responses when appropriate
+3. Use websockets for real-time updates instead of polling
+
+## Network Access via VPN
+
+<Note>
+  For security, access on-premises hypervisors through a VPN connection like Tailscale or NetBird. Never expose hypervisor APIs directly to the internet.
+</Note>
+
+Example network architecture:
+
+```
+[Nexus Portal] → [Tailscale VPN] → [On-Prem Network] → [Hypervisors]
+```
+
+See:
+- [Tailscale Integration](/infrastructure/tailscale-integration)
+- [NetBird Integration](/infrastructure/netbird-integration)
+- [Headscale Setup](/infrastructure/headscale-setup)
+
+## Related Resources
+
+- [Cloud Providers](/infrastructure/cloud-providers) - Public cloud infrastructure
+- [Tailscale Integration](/infrastructure/tailscale-integration) - Secure hypervisor access
+- [NetBird Integration](/infrastructure/netbird-integration) - VPN connectivity

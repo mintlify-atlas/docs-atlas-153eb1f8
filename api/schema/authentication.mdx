@@ -1,0 +1,390 @@
+---
+title: 'Authentication Schema'
+description: 'Database schema for user authentication, profiles, and identity management'
+---
+
+## Overview
+
+The authentication schema manages user accounts, roles, profiles, and third-party identity provider integrations including Zitadel OIDC/SAML.
+
+## Tables
+
+### profiles
+
+Extends `auth.users` with organization membership and role information.
+
+```sql Schema
+CREATE TABLE public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
+  full_name TEXT NOT NULL,
+  role public.user_role DEFAULT 'user',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID" required>
+  Primary key, references `auth.users(id)`. User's unique identifier.
+</ParamField>
+
+<ParamField path="organization_id" type="UUID">
+  Foreign key to `organizations`. User's organization membership.
+</ParamField>
+
+<ParamField path="full_name" type="TEXT" required>
+  User's full name or display name.
+</ParamField>
+
+<ParamField path="role" type="user_role" default="user">
+  User's role: `global_admin`, `org_admin`, `support`, or `user`.
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Profile creation timestamp.
+</ParamField>
+
+#### Indexes
+
+- `idx_profiles_organization_id` - Fast lookups by organization
+- `idx_profiles_role` - Fast filtering by role
+
+#### Triggers
+
+**`on_auth_user_created`** - Automatically creates a profile when a new user signs up:
+
+```sql Trigger Function
+CREATE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, full_name, role)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', 'New User'),
+    'user'::user_role
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+### user_roles
+
+Separate table for role assignments (supports multiple roles per user).
+
+```sql Schema
+CREATE TABLE public.user_roles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, role)
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Primary key
+</ParamField>
+
+<ParamField path="user_id" type="UUID" required>
+  User ID from auth.users
+</ParamField>
+
+<ParamField path="role" type="TEXT" required>
+  Role name (e.g., `global_admin`, `org_admin`, `support`, `user`)
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Role assignment timestamp
+</ParamField>
+
+#### Constraints
+
+- **Unique constraint:** `(user_id, role)` - Prevents duplicate role assignments
+
+### zitadel_configurations
+
+Stores Zitadel OIDC/SAML configuration per organization.
+
+```sql Schema
+CREATE TABLE public.zitadel_configurations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES public.organizations(id),
+  name TEXT NOT NULL,
+  issuer_url TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  client_secret TEXT,
+  redirect_uri TEXT NOT NULL,
+  scopes TEXT[] DEFAULT ARRAY['openid', 'profile', 'email', 'groups'],
+  api_token TEXT,
+  project_id TEXT,
+  sync_groups BOOLEAN DEFAULT true,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(organization_id, name)
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Configuration ID
+</ParamField>
+
+<ParamField path="organization_id" type="UUID" required>
+  Organization this config belongs to
+</ParamField>
+
+<ParamField path="name" type="TEXT" required>
+  Configuration name (e.g., "Production Zitadel")
+</ParamField>
+
+<ParamField path="issuer_url" type="TEXT" required>
+  Zitadel issuer URL (e.g., `https://gate.kappa4.com`)
+</ParamField>
+
+<ParamField path="client_id" type="TEXT" required>
+  OAuth client ID
+</ParamField>
+
+<ParamField path="client_secret" type="TEXT">
+  OAuth client secret (encrypted in backend)
+</ParamField>
+
+<ParamField path="redirect_uri" type="TEXT" required>
+  OAuth redirect URI after authentication
+</ParamField>
+
+<ParamField path="scopes" type="TEXT[]">
+  OAuth scopes requested (default: openid, profile, email, groups)
+</ParamField>
+
+<ParamField path="api_token" type="TEXT">
+  Zitadel Management API token for group sync
+</ParamField>
+
+<ParamField path="project_id" type="TEXT">
+  Zitadel project ID to scope roles/grants
+</ParamField>
+
+<ParamField path="sync_groups" type="BOOLEAN" default="true">
+  Whether to automatically sync groups from Zitadel
+</ParamField>
+
+<ParamField path="is_active" type="BOOLEAN" default="true">
+  Whether this configuration is active for SSO
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Creation timestamp
+</ParamField>
+
+<ParamField path="updated_at" type="TIMESTAMPTZ">
+  Last update timestamp
+</ParamField>
+
+### zitadel_group_mappings
+
+Maps Zitadel roles/groups to local groups.
+
+```sql Schema
+CREATE TABLE public.zitadel_group_mappings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  zitadel_config_id UUID NOT NULL REFERENCES public.zitadel_configurations(id) ON DELETE CASCADE,
+  zitadel_group_id TEXT NOT NULL,
+  zitadel_group_name TEXT NOT NULL,
+  local_group_id UUID REFERENCES public.groups(id) ON DELETE SET NULL,
+  auto_sync BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(zitadel_config_id, zitadel_group_id)
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Mapping ID
+</ParamField>
+
+<ParamField path="zitadel_config_id" type="UUID" required>
+  Zitadel configuration this mapping belongs to
+</ParamField>
+
+<ParamField path="zitadel_group_id" type="TEXT" required>
+  Role/group ID from Zitadel
+</ParamField>
+
+<ParamField path="zitadel_group_name" type="TEXT" required>
+  Role/group display name from Zitadel
+</ParamField>
+
+<ParamField path="local_group_id" type="UUID">
+  Mapped local group ID (can be null if not mapped)
+</ParamField>
+
+<ParamField path="auto_sync" type="BOOLEAN" default="true">
+  Whether to automatically sync members
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Mapping creation timestamp
+</ParamField>
+
+### user_zitadel_identities
+
+Links local users to their Zitadel identities.
+
+```sql Schema
+CREATE TABLE public.user_zitadel_identities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  zitadel_config_id UUID NOT NULL REFERENCES public.zitadel_configurations(id) ON DELETE CASCADE,
+  zitadel_user_id TEXT NOT NULL,
+  zitadel_groups TEXT[],
+  last_synced_at TIMESTAMPTZ DEFAULT now(),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, zitadel_config_id),
+  UNIQUE(zitadel_config_id, zitadel_user_id)
+);
+```
+
+#### Columns
+
+<ParamField path="id" type="UUID">
+  Identity link ID
+</ParamField>
+
+<ParamField path="user_id" type="UUID" required>
+  Local user ID
+</ParamField>
+
+<ParamField path="zitadel_config_id" type="UUID" required>
+  Zitadel configuration used
+</ParamField>
+
+<ParamField path="zitadel_user_id" type="TEXT" required>
+  User's subject ID in Zitadel
+</ParamField>
+
+<ParamField path="zitadel_groups" type="TEXT[]">
+  Current Zitadel groups/roles for this user
+</ParamField>
+
+<ParamField path="last_synced_at" type="TIMESTAMPTZ">
+  Last time groups were synced
+</ParamField>
+
+<ParamField path="created_at" type="TIMESTAMPTZ">
+  Identity link creation timestamp
+</ParamField>
+
+## Enums
+
+### user_role
+
+```sql Enum Definition
+CREATE TYPE public.user_role AS ENUM (
+  'global_admin',  -- Full system access
+  'org_admin',     -- Organization administrator
+  'support',       -- Support/helpdesk role
+  'user'          -- Standard user
+);
+```
+
+## Helper Functions
+
+### get_user_role
+
+Security definer function to get a user's role (breaks RLS recursion).
+
+```sql Function
+CREATE FUNCTION public.get_user_role(_user_id uuid)
+RETURNS user_role
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT role FROM profiles WHERE id = _user_id
+$$;
+```
+
+### get_user_org_id
+
+Security definer function to get a user's organization ID.
+
+```sql Function
+CREATE FUNCTION public.get_user_org_id(_user_id uuid)
+RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT organization_id FROM profiles WHERE id = _user_id
+$$;
+```
+
+### get_active_sso_configs
+
+Public function to retrieve active SSO configurations (safe fields only).
+
+```sql Function
+CREATE FUNCTION public.get_active_sso_configs()
+RETURNS TABLE(id uuid, name text, issuer_url text, organization_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT id, name, issuer_url, organization_id
+  FROM zitadel_configurations
+  WHERE is_active = true;
+$$;
+```
+
+## Row Level Security
+
+All tables have RLS enabled. Key policies:
+
+### profiles
+
+```sql RLS Policies
+-- Users can view profiles in their organization
+CREATE POLICY "Users can view profiles in their organization"
+ON public.profiles FOR SELECT
+USING (
+  organization_id = public.get_user_org_id(auth.uid())
+  OR public.get_user_role(auth.uid()) = 'global_admin'
+);
+
+-- Users can view their own profile
+CREATE POLICY "Users can view their own profile"
+ON public.profiles FOR SELECT
+USING (id = auth.uid());
+
+-- Admins can update profiles
+CREATE POLICY "Org admins can update profiles in their org"
+ON public.profiles FOR UPDATE
+USING (
+  public.get_user_role(auth.uid()) IN ('org_admin', 'global_admin')
+  AND organization_id = public.get_user_org_id(auth.uid())
+);
+```
+
+### zitadel_configurations
+
+```sql RLS Policies
+-- Only admins can manage Zitadel configs
+CREATE POLICY "Admins can manage Zitadel configs"
+ON public.zitadel_configurations FOR ALL
+USING (
+  organization_id = get_user_org_id(auth.uid())
+  AND get_user_role(auth.uid()) = ANY (ARRAY['org_admin'::user_role, 'global_admin'::user_role])
+);
+```
+
+## Related Tables
+
+- `organizations` - Organization records
+- `groups` - User groups for permissions
+- `user_groups` - User group memberships
+- `audit_logs` - Authentication audit trail

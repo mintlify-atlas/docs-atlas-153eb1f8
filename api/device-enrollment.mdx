@@ -1,0 +1,335 @@
+---
+title: 'Device Enrollment'
+description: 'Edge Function for secure device enrollment with Tailscale integration'
+---
+
+## Overview
+
+The Device Enrollment Edge Function manages the complete device lifecycle: generating enrollment tokens, validating devices, and integrating with Tailscale for network access.
+
+**Endpoint:** `/functions/v1/device-enrollment`
+
+**Authentication:** Required (Authorization header with Supabase JWT)
+
+## Actions
+
+### Create Pending Device
+
+Admin action to create a pending device for a user with pre-configured Tailscale auth key.
+
+**Action:** `create_pending_device`
+
+<ParamField body="user_id" type="string">
+  Target user ID (defaults to authenticated user)
+</ParamField>
+
+<ParamField body="organization_id" type="string">
+  Organization ID
+</ParamField>
+
+<ParamField body="device_name" type="string">
+  Device name (defaults to "Pending Device")
+</ParamField>
+
+<ParamField body="device_type" type="string">
+  Device type: `laptop`, `desktop`, `mobile`, `tablet`, `windows`, `macos`
+</ParamField>
+
+<ParamField body="os" type="string">
+  Operating system (max 50 chars)
+</ParamField>
+
+<ParamField body="tailscale_auth_key" type="string">
+  Optional Tailscale auth key (uses org config if not provided)
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Whether device was created
+</ResponseField>
+
+<ResponseField name="device_id" type="string">
+  UUID of created device
+</ResponseField>
+
+<ResponseField name="enrollment_token" type="string">
+  Token for device enrollment (share with user)
+</ResponseField>
+
+<ResponseField name="expires_at" type="string">
+  Token expiration timestamp (24 hours)
+</ResponseField>
+
+```bash Example Request
+curl -X POST 'https://your-project.supabase.co/functions/v1/device-enrollment' \
+  -H 'Authorization: Bearer YOUR_JWT' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "action": "create_pending_device",
+    "user_id": "uuid-of-user",
+    "organization_id": "uuid-of-org",
+    "device_name": "MacBook Pro",
+    "device_type": "laptop",
+    "os": "macOS 14.0"
+  }'
+```
+
+### Generate Token
+
+User-initiated action to generate an enrollment token for their new device.
+
+**Action:** `generate_token`
+
+<ParamField body="device_name" type="string">
+  Device name (defaults to "New Device")
+</ParamField>
+
+<ParamField body="device_type" type="string">
+  Device type (defaults to "laptop")
+</ParamField>
+
+<ParamField body="os" type="string">
+  Operating system
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Whether token was generated
+</ResponseField>
+
+<ResponseField name="enrollment_token" type="string">
+  Enrollment token (UUID format)
+</ResponseField>
+
+<ResponseField name="device_id" type="string">
+  Created device ID
+</ResponseField>
+
+<ResponseField name="expires_at" type="string">
+  Token expiration (24 hours from now)
+</ResponseField>
+
+<ResponseField name="has_tailscale_key" type="boolean">
+  Whether Tailscale auth key is configured
+</ResponseField>
+
+### Enroll Device
+
+Silent enrollment when device provides its fingerprint.
+
+**Action:** `enroll`
+
+<ParamField body="fingerprint" type="string" required>
+  Unique device fingerprint (alphanumeric with hyphens, max 100 chars)
+</ParamField>
+
+<ParamField body="device_name" type="string">
+  Device name
+</ParamField>
+
+<ParamField body="device_type" type="string">
+  Device type
+</ParamField>
+
+<ParamField body="os" type="string">
+  Operating system
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Enrollment success status
+</ResponseField>
+
+<ResponseField name="device_id" type="string">
+  Device ID (existing or newly created)
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Device status: `active` or existing status
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Result message
+</ResponseField>
+
+```bash Example Request
+curl -X POST 'https://your-project.supabase.co/functions/v1/device-enrollment' \
+  -H 'Authorization: Bearer YOUR_JWT' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "action": "enroll",
+    "fingerprint": "abc123-def456-ghi789",
+    "device_name": "My MacBook",
+    "device_type": "laptop",
+    "os": "macOS 14.0"
+  }'
+```
+
+### Verify Token
+
+Validates an enrollment token and returns Tailscale configuration.
+
+**Action:** `verify`
+
+<ParamField body="enrollment_token" type="string" required>
+  Enrollment token from generate_token or create_pending_device
+</ParamField>
+
+<ParamField body="device_type" type="string">
+  Device type to update
+</ParamField>
+
+<ParamField body="fingerprint" type="string">
+  Device fingerprint
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Validation success
+</ResponseField>
+
+<ResponseField name="device_id" type="string">
+  Device ID
+</ResponseField>
+
+<ResponseField name="device_name" type="string">
+  Device name from registration
+</ResponseField>
+
+<ResponseField name="organization_name" type="string">
+  Organization name
+</ResponseField>
+
+<ResponseField name="tailscale_auth_key" type="string">
+  Tailscale authentication key for device setup
+</ResponseField>
+
+<ResponseField name="tailscale_tags" type="string[]">
+  Tailscale tags to apply (e.g., `["tag:prod"]`)
+</ResponseField>
+
+<ResponseField name="tailscale_group" type="string">
+  Tailscale ACL group
+</ResponseField>
+
+<ResponseField name="expires_at" type="string">
+  Token expiration timestamp
+</ResponseField>
+
+```bash Example Request
+curl -X POST 'https://your-project.supabase.co/functions/v1/device-enrollment' \
+  -H 'Authorization: Bearer YOUR_JWT' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "action": "verify",
+    "enrollment_token": "uuid-token-here",
+    "device_type": "laptop",
+    "fingerprint": "device-fingerprint"
+  }'
+```
+
+### Check Tailscale Status
+
+Checks if a device has successfully connected to Tailscale network.
+
+**Action:** `check_tailscale_status`
+
+<ParamField body="enrollment_token" type="string" required>
+  Device ID (passed via this field for compatibility)
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Request success
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Device status
+</ResponseField>
+
+<ResponseField name="tailscale_connected" type="boolean">
+  Whether device is connected to Tailscale
+</ResponseField>
+
+<ResponseField name="tailscale_hostname" type="string">
+  Tailscale hostname (if connected)
+</ResponseField>
+
+<ResponseField name="tailscale_ip" type="string">
+  Tailscale IP address (if connected)
+</ResponseField>
+
+## Input Validation
+
+### Device Name
+- Type: String
+- Length: 1-100 characters
+- Required for most actions
+
+### Device Type
+- Type: String
+- Allowed values: `laptop`, `desktop`, `mobile`, `tablet`, `windows`, `macos`
+- Validates against whitelist
+
+### Operating System
+- Type: String
+- Length: 1-50 characters
+
+### Fingerprint
+- Type: String
+- Pattern: Alphanumeric with hyphens (`[a-zA-Z0-9-]+`)
+- Length: Max 100 characters
+- Must be unique per user
+
+## TypeScript Interfaces
+
+```typescript TypeScript
+interface EnrollmentPayload {
+  action: 'generate_token' | 'enroll' | 'verify' | 'create_pending_device' | 'check_tailscale_status'
+  device_name?: string
+  device_type?: string
+  os?: string
+  fingerprint?: string
+  enrollment_token?: string
+  user_id?: string
+  organization_id?: string
+  tailscale_auth_key?: string
+}
+```
+
+## Device Statuses
+
+- `pending` - Device created but not enrolled
+- `active` - Device enrolled and active
+- `inactive` - Device deactivated
+- `revoked` - Device access revoked
+
+## Trust Levels
+
+- `low` - Default for pending devices
+- `medium` - Silent enrollment without Tailscale
+- `high` - Enrolled with Tailscale verification
+
+## Audit Events
+
+All actions are logged to `device_events` and `audit_logs` tables:
+
+- `pending_device_created`
+- `enrollment_initiated`
+- `enrolled`
+- `token_validated`
+- `tailscale_connected`
+
+## Error Responses
+
+<ResponseField name="error" type="string">
+  Error message
+</ResponseField>
+
+Common errors:
+- `Authorization header required` - Missing auth
+- `Invalid device name` - Name validation failed
+- `Invalid device type` - Type not in allowed list
+- `Token inválido o expirado` - Invalid or expired token
+- `No Tailscale auth key configured` - Missing Tailscale config
+
+## Related Tables
+
+- `devices` - Device records
+- `device_events` - Device activity log
+- `organization_tailscale_config` - Tailscale configuration per org

@@ -1,0 +1,138 @@
+---
+title: Admin Panel
+description: Visual canvas for managing user assignments, groups, and resource access
+---
+
+The **Admin Panel** provides a visual, drag-and-drop interface for managing relationships between organizations, groups, users, and resources. It's designed for administrators who need to quickly assign users to groups and grant resource access.
+
+## Access Requirements
+
+<Note>
+  The Admin Panel requires **Organization Admin** or **Global Admin** role. Support users also have read-only access.
+</Note>
+
+## Overview
+
+The Admin Panel consists of:
+
+- **Left Sidebar**: Browse organizations, groups, users, and resources
+- **Canvas**: Visual workspace for creating assignments
+- **Quick Stats**: Summary cards showing counts
+
+## Using the Canvas
+
+### Adding Items to Canvas
+
+1. Select an organization from the dropdown
+2. Switch between tabs: **Groups**, **Users**, **Resources**
+3. **Drag** items from the sidebar onto the canvas
+4. Items appear as colored nodes with icons
+
+<Note>
+  Each item can only be added once. Duplicate additions are prevented.
+</Note>
+
+### Creating Connections
+
+The Admin Panel supports two types of connections:
+
+#### Group → User
+
+Assigns a user to a group:
+
+1. Click the **link icon** on a group node
+2. Click a user node to complete the connection
+3. A blue connection line appears
+4. The assignment is saved to the database
+
+#### User → Resource
+
+Grants a user access to a resource:
+
+1. Click the **link icon** on a user node
+2. Click a resource node to complete the connection
+3. An amber connection line appears
+4. Access is granted with `active` status
+
+<Warning>
+  Only valid connections are allowed:
+  - Group → User ✅
+  - User → Resource ✅
+  - Group → Resource ❌ (not supported)
+</Warning>
+
+### Removing Connections
+
+To revoke an assignment:
+
+1. Click the connection line between nodes
+2. The connection is removed immediately
+3. Database records are deleted
+
+### Managing Nodes
+
+- **Move**: Drag nodes to reposition them on the canvas
+- **Connect**: Click the link icon and select another node
+- **Remove**: Click the X icon to remove from canvas (doesn't delete from database)
+
+## Search and Filter
+
+Use the search bar to filter items by name:
+
+- Filters apply to the active tab (Groups/Users/Resources)
+- Search is case-insensitive
+- Results update in real-time
+
+## Visual Legend
+
+| Color | Type | Icon |
+|-------|------|------|
+| Violet | Organization | Building |
+| Blue | Group | Layers |
+| Emerald | User | User Avatar |
+| Amber | Resource | Server |
+
+## Quick Actions
+
+At the bottom of the panel, view counts for:
+
+- **Groups**: Total groups in selected organization
+- **Users**: Total users in selected organization
+- **Resources**: Total resources in selected organization
+
+## User Invitations
+
+For user nodes on the canvas:
+
+1. Click the **Invitar** (Invite) button
+2. An invitation is sent to the user
+3. A toast notification confirms the action
+
+<Note>
+  Best Practice: Assign users to groups before granting direct resource access. Group-based access is easier to manage at scale.
+</Note>
+
+## Workflow Example
+
+1. Select "Engineering Dept" organization
+2. Drag "Developers" group to canvas
+3. Drag "Alice" user to canvas
+4. Connect Developers → Alice
+5. Drag "GitHub" resource to canvas
+6. Connect Alice → GitHub
+7. Alice now has access to GitHub via the Developers group
+
+## Permissions
+
+| Action | Org Admin | Global Admin | Support |
+|--------|-----------|--------------|----------|
+| View canvas | ✅ | ✅ | ✅ |
+| Create assignments | ✅ | ✅ | ✅ |
+| Remove assignments | ✅ | ✅ | ❌ |
+| Send invitations | ✅ | ✅ | ✅ |
+
+## Related Pages
+
+- [User Management](/admin/user-management)
+- [Organization Structure](/admin/organization-structure)
+- [Roles & Permissions](/admin/roles-permissions)

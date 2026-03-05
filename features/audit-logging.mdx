@@ -1,0 +1,503 @@
+---
+title: 'Audit Logging'
+description: 'Track all activities for compliance and security'
+icon: 'scroll'
+---
+
+Audit Logging provides a comprehensive, tamper-proof record of all activities within the Nexus Access Vault platform. Every user action, system event, and access decision is logged for security monitoring, compliance, and forensic investigation.
+
+## Overview
+
+The Audit Log page displays all recorded events within your organization, providing visibility into who did what, when, and from where. Audit logs are essential for compliance with regulations like SOC 2, ISO 27001, HIPAA, and GDPR.
+
+**Key Features:**
+- Comprehensive event logging
+- Organization-scoped logs
+- Chronological event display
+- Event details and metadata
+- Timestamp tracking
+- Tamper-proof records
+- Export capabilities (planned)
+- Long-term retention
+
+## What Gets Logged
+
+Nexus Access Vault logs a wide range of events across all modules:
+
+### User Events
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="right-to-bracket">
+    - User login (success/failure)
+    - User logout
+    - MFA challenges
+    - Password changes
+    - Account lockouts
+  </Card>
+  <Card title="Authorization" icon="shield-check">
+    - Resource access attempts
+    - Permission grants
+    - Permission denials
+    - Policy evaluations
+    - Role changes
+  </Card>
+  <Card title="Session Activity" icon="clock">
+    - Session start
+    - Session end
+    - Session timeout
+    - Idle warnings
+    - Connection changes
+  </Card>
+  <Card title="Profile Changes" icon="user-pen">
+    - Profile updates
+    - Email changes
+    - Phone number changes
+    - Organization assignment
+    - Group membership changes
+  </Card>
+</CardGroup>
+
+### Administrative Events
+
+<AccordionGroup>
+  <Accordion title="User Management">
+    - User account creation
+    - User account deletion
+    - User account suspension
+    - Role assignment changes
+    - Bulk user imports
+  </Accordion>
+  
+  <Accordion title="Resource Management">
+    - Application creation
+    - Application deletion
+    - Application configuration changes
+    - Resource assignment to users
+    - Resource assignment to groups
+  </Accordion>
+  
+  <Accordion title="Policy Management">
+    - Policy creation
+    - Policy activation
+    - Policy deactivation
+    - Policy modification
+    - Policy deletion
+  </Accordion>
+  
+  <Accordion title="Group Management">
+    - Group creation
+    - Group deletion
+    - Member additions
+    - Member removals
+    - LDAP sync events
+  </Accordion>
+  
+  <Accordion title="Organization Management">
+    - Organization creation
+    - Organization deletion
+    - Organization settings changes
+    - Branding updates
+  </Accordion>
+</AccordionGroup>
+
+### Device Events
+
+- Device enrollment
+- Device trust level changes
+- Device status changes (active/revoked/compromised)
+- Device re-enrollment
+- Device access revocation
+- Fingerprint verification
+
+### System Events
+
+- Configuration changes
+- System errors
+- Integration events (LDAP, Tailscale, etc.)
+- Backup operations
+- Security alerts
+
+## Audit Log Display
+
+The audit log page shows events in reverse chronological order (newest first):
+
+**Implementation:** `src/pages/Audit.tsx:15`
+
+```tsx
+export default function Audit() {
+  const { profile } = useAuth();
+  const { toast } = useToast();
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadLogs();
+  }, [profile]);
+
+  const loadLogs = async () => {
+    if (!profile?.organization_id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .eq('organization_id', profile.organization_id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setLogs(data || []);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+}
+```
+
+### Log Entry Structure
+
+```tsx
+interface AuditLog {
+  id: string;           // Unique log entry ID
+  event: string;        // Event type/name
+  details: any;         // Event-specific data
+  created_at: string;   // ISO 8601 timestamp
+}
+```
+
+### Log Entry Display
+
+Each log entry is displayed in a card:
+
+```tsx
+// From Audit.tsx:69
+<div className="space-y-2">
+  {logs.map((log) => (
+    <Card key={log.id} className="glass">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="font-medium">{log.event}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {new Date(log.created_at).toLocaleString()}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  ))}
+</div>
+```
+
+**Display Format:**
+- Event name (bold)
+- Timestamp in local format
+- Event details (when expanded)
+
+## Log Data Organization
+
+### Organization Scoping
+
+Audit logs are automatically filtered by organization:
+
+```sql
+SELECT * FROM audit_logs 
+WHERE organization_id = :current_user_organization
+ORDER BY created_at DESC
+LIMIT 50;
+```
+
+This ensures:
+- Users only see logs from their organization
+- Complete tenant isolation
+- No data leakage between organizations
+- Compliance with data privacy regulations
+
+### Pagination
+
+Currently limited to 50 most recent logs. Future enhancements will include:
+- Infinite scroll or pagination
+- Date range filtering
+- Event type filtering
+- User filtering
+- Resource filtering
+- Export to CSV/JSON
+
+## Event Details
+
+Each audit log entry includes detailed metadata in the `details` field:
+
+### Example Event Details
+
+<Tabs>
+  <Tab title="User Login">
+    ```json
+    {
+      "event": "user.login.success",
+      "details": {
+        "user_id": "uuid",
+        "email": "user@example.com",
+        "ip_address": "192.168.1.100",
+        "user_agent": "Mozilla/5.0...",
+        "location": "Mexico City, MX",
+        "device_id": "uuid",
+        "mfa_used": true
+      },
+      "created_at": "2024-01-15T10:30:00Z"
+    }
+    ```
+  </Tab>
+  <Tab title="Resource Access">
+    ```json
+    {
+      "event": "resource.access.granted",
+      "details": {
+        "user_id": "uuid",
+        "resource_id": "uuid",
+        "resource_name": "Production Server",
+        "access_method": "rdp",
+        "device_trust_level": "high",
+        "policies_evaluated": [
+          "policy-uuid-1",
+          "policy-uuid-2"
+        ],
+        "ip_address": "192.168.1.100"
+      },
+      "created_at": "2024-01-15T10:35:00Z"
+    }
+    ```
+  </Tab>
+  <Tab title="Policy Change">
+    ```json
+    {
+      "event": "policy.activated",
+      "details": {
+        "policy_id": "uuid",
+        "policy_name": "Require MFA for External Access",
+        "changed_by": "admin@example.com",
+        "previous_status": "draft",
+        "new_status": "active",
+        "affects_count": 42
+      },
+      "created_at": "2024-01-15T09:00:00Z"
+    }
+    ```
+  </Tab>
+  <Tab title="Device Event">
+    ```json
+    {
+      "event": "device.trust_level.changed",
+      "details": {
+        "device_id": "uuid",
+        "device_name": "MacBook Pro",
+        "user_id": "uuid",
+        "previous_level": "high",
+        "new_level": "medium",
+        "reason": "OS update pending",
+        "automatic": true
+      },
+      "created_at": "2024-01-15T08:00:00Z"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Timestamp Format
+
+Timestamps are displayed in the user's local timezone:
+
+```tsx
+new Date(log.created_at).toLocaleString()
+// Example output: "1/15/2024, 10:30:00 AM"
+```
+
+**Formats:**
+- **Short:** `1/15/2024, 10:30 AM`
+- **Long:** `January 15, 2024 at 10:30:00 AM CST`
+- **Relative:** "2 hours ago", "Yesterday", "Last week"
+
+## Loading States
+
+### Loading Indicator
+
+While logs are being loaded:
+
+```tsx
+// From Audit.tsx:56
+{loading ? (
+  <div className="text-center py-12">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto mb-4"></div>
+    <p className="text-muted-foreground">Loading audit logs...</p>
+  </div>
+) : (
+  // Log entries
+)}
+```
+
+### Empty State
+
+If no audit logs exist:
+
+```tsx
+// From Audit.tsx:61
+{logs.length === 0 ? (
+  <Card className="glass">
+    <CardContent className="py-12 text-center">
+      <ScrollText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+      <p className="text-muted-foreground">No audit logs found</p>
+    </CardContent>
+  </Card>
+) : (
+  // Log list
+)}
+```
+
+## Compliance Use Cases
+
+<CardGroup cols={2}>
+  <Card title="SOC 2 Type II" icon="shield-check">
+    Demonstrate logging of all access to customer data and administrative actions
+  </Card>
+  <Card title="ISO 27001" icon="certificate">
+    Maintain audit trails for information security management
+  </Card>
+  <Card title="HIPAA" icon="hospital">
+    Track all access to protected health information (PHI)
+  </Card>
+  <Card title="GDPR" icon="scale-balanced">
+    Document data access and deletion for GDPR compliance
+  </Card>
+  <Card title="PCI DSS" icon="credit-card">
+    Log access to cardholder data environments
+  </Card>
+  <Card title="NIST 800-53" icon="flag-usa">
+    Comprehensive audit logging for federal compliance
+  </Card>
+</CardGroup>
+
+## Security Monitoring
+
+### Anomaly Detection Signals
+
+Audit logs can reveal security incidents:
+
+<AccordionGroup>
+  <Accordion title="Multiple Failed Logins">
+    Pattern of failed login attempts may indicate brute force attack
+  </Accordion>
+  <Accordion title="Unusual Access Times">
+    Access outside normal hours may indicate compromised credentials
+  </Accordion>
+  <Accordion title="Geographic Anomalies">
+    Logins from unexpected locations may indicate account takeover
+  </Accordion>
+  <Accordion title="Privilege Escalation">
+    Sudden increase in permissions may indicate insider threat
+  </Accordion>
+  <Accordion title="Bulk Operations">
+    Mass data exports or user deletions may indicate malicious activity
+  </Accordion>
+  <Accordion title="Policy Disabling">
+    Deactivation of security policies may indicate attack in progress
+  </Accordion>
+</AccordionGroup>
+
+## Audit Log Best Practices
+
+<Steps>
+  <Step title="Regular Review">
+    Review audit logs daily or weekly depending on your security requirements
+  </Step>
+  <Step title="Alert Configuration">
+    Set up alerts for critical events (failed logins, policy changes, admin actions)
+  </Step>
+  <Step title="Long-Term Retention">
+    Retain logs for at least 90 days, preferably 1 year or longer for compliance
+  </Step>
+  <Step title="Secure Storage">
+    Ensure audit logs are stored in tamper-proof, append-only storage
+  </Step>
+  <Step title="Backup Logs">
+    Regularly backup audit logs to secondary storage for disaster recovery
+  </Step>
+  <Step title="Access Control">
+    Restrict audit log access to security and compliance teams only
+  </Step>
+</Steps>
+
+## Future Enhancements
+
+<Info>
+  **Planned Features:**
+  - Advanced filtering (date range, event type, user, resource)
+  - Full-text search across event details
+  - Export to CSV, JSON, and SIEM formats
+  - Real-time log streaming
+  - Automated threat detection
+  - Compliance report generation
+  - Log forwarding to external SIEM
+  - Retention policy configuration
+</Info>
+
+## Common Event Types
+
+Event naming convention: `<module>.<action>.<result>`
+
+### Authentication Events
+- `auth.login.success`
+- `auth.login.failure`
+- `auth.logout`
+- `auth.mfa.challenge`
+- `auth.mfa.success`
+- `auth.password.changed`
+
+### Access Events
+- `resource.access.granted`
+- `resource.access.denied`
+- `session.started`
+- `session.ended`
+- `policy.evaluated`
+
+### Administrative Events
+- `user.created`
+- `user.deleted`
+- `user.role.changed`
+- `group.created`
+- `group.deleted`
+- `policy.created`
+- `policy.activated`
+- `policy.deactivated`
+
+### Device Events
+- `device.enrolled`
+- `device.revoked`
+- `device.trust.changed`
+- `device.compromised`
+
+## Integration with SIEM
+
+<Note>
+  **Coming Soon:** Integration with popular SIEM platforms including Splunk, Azure Sentinel, and Elastic Security.
+</Note>
+
+Audit logs can be forwarded to external Security Information and Event Management (SIEM) systems for:
+- Advanced correlation and analysis
+- Cross-platform security monitoring
+- Long-term archival
+- Compliance reporting
+- Threat intelligence enrichment
+
+## Related Features
+
+- [Application Management](/features/application-management) - Resource access events are logged
+- [Session Management](/features/session-management) - Session events are logged
+- [Device Management](/features/device-management) - Device changes are logged
+- [Policies](/features/policies) - Policy evaluations are logged
+- [User Groups](/features/user-groups) - Group changes are logged
+- [Organization Management](/features/organization-management) - Org changes are logged

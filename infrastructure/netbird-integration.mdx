@@ -1,0 +1,277 @@
+---
+title: NetBird Integration
+description: Configure NetBird VPN for zero-trust network access to Nexus Access Vault
+---
+
+## Overview
+
+NetBird integration enables zero-trust network access to your Nexus Access Vault portal. By restricting access to devices connected to your NetBird VPN network, you ensure that only authorized users on trusted devices can reach the management portal.
+
+<Warning>
+  NetBird integration requires a NetBird account and network. The portal should only be accessible through the NetBird internal network to ensure maximum security.
+</Warning>
+
+## Prerequisites
+
+- NetBird account and configured network
+- NetBird API access token
+- Internal IP or DNS name for the portal within NetBird network
+- Zitadel OIDC instance (optional, but recommended for authentication)
+
+## Installation
+
+### Step 1: Install NetBird on Server
+
+Install the NetBird client on the server hosting Nexus Access Vault:
+
+```bash
+curl -fsSL https://pkgs.netbird.io/install.sh | sh
+```
+
+### Step 2: Connect to NetBird Network
+
+Use a setup key from your NetBird dashboard to connect:
+
+```bash
+netbird up --setup-key <your-setup-key>
+```
+
+### Step 3: Get Internal IP Address
+
+Retrieve the NetBird internal IP assigned to your server:
+
+```bash
+netbird status
+```
+
+Note the IP address shown (e.g., `100.64.0.5`).
+
+## Configuration
+
+### Environment Variables
+
+Configure the following environment variables in your `.env` file:
+
+```bash
+# NetBird Configuration
+NETBIRD_API_KEY="nbp_xxxxxxxxxxxxxxxxxxxxxxxx"
+NETBIRD_BASE_URL="https://api.netbird.io"
+
+# Network Mode
+VITE_NETWORK_MODE="internal"
+VITE_INTERNAL_HOST="100.64.0.5"  # Your NetBird IP
+
+# Zitadel OIDC (recommended)
+VITE_ZITADEL_ISSUER_URL="https://manager.kappa4.com"
+VITE_ZITADEL_CLIENT_ID="<your-client-id>"
+VITE_ZITADEL_REDIRECT_URI="http://100.64.0.5:8080/auth/callback"
+```
+
+### Application Binding
+
+Configure your application to bind to all network interfaces in `vite.config.ts`:
+
+```typescript
+export default defineConfig({
+  server: {
+    host: "::",  // Binds to all IPv6 and IPv4 interfaces
+    port: 8080,
+  },
+});
+```
+
+For production, bind only to the NetBird interface:
+
+```typescript
+export default defineConfig({
+  server: {
+    host: "100.64.0.5",  // Your NetBird IP
+    port: 8080,
+  },
+});
+```
+
+## NetBird API Proxy
+
+The portal includes an Edge Function that proxies requests to the NetBird API. This is located at:
+
+```
+supabase/functions/netbird-proxy/index.ts
+```
+
+### API Usage
+
+The proxy function handles authentication and forwards requests to NetBird:
+
+```typescript
+// Example: List all peers
+const response = await supabase.functions.invoke('netbird-proxy', {
+  body: { path: '/api/peers' },
+});
+
+// Example: Get specific peer
+const response = await supabase.functions.invoke('netbird-proxy', {
+  body: { path: '/api/peers/peer-id-here' },
+});
+```
+
+### Audit Logging
+
+All NetBird API calls are automatically logged to the `audit_logs` table:
+
+```typescript
+await adminClient.from('audit_logs').insert({
+  user_id: user.id,
+  event: 'netbird_api_call',
+  details: {
+    method: req.method,
+    path,
+    status: netbirdResponse.status,
+  },
+});
+```
+
+## Firewall Configuration
+
+### UFW (Ubuntu)
+
+Restrict access to only allow connections from the NetBird network:
+
+```bash
+# Allow from NetBird subnet (adjust subnet as needed)
+sudo ufw allow from 100.64.0.0/10 to any port 8080
+
+# Deny all other access to port 8080
+sudo ufw deny 8080
+
+# Enable firewall
+sudo ufw enable
+```
+
+### iptables
+
+Alternatively, use iptables:
+
+```bash
+# Allow NetBird network
+iptables -A INPUT -s 100.64.0.0/10 -p tcp --dport 8080 -j ACCEPT
+
+# Drop all other connections to port 8080
+iptables -A INPUT -p tcp --dport 8080 -j DROP
+
+# Save rules
+iptables-save > /etc/iptables/rules.v4
+```
+
+## Production Deployment with Nginx
+
+For production environments, use Nginx as a reverse proxy with SSL:
+
+```nginx
+server {
+    listen 100.64.0.5:443 ssl http2;
+    server_name vault.internal.company.com;
+
+    ssl_certificate /etc/ssl/certs/vault.crt;
+    ssl_certificate_key /etc/ssl/private/vault.key;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+## Access Flow
+
+1. User connects to NetBird VPN on their device
+2. User navigates to the internal portal URL (e.g., `http://100.64.0.5:8080`)
+3. User authenticates via Zitadel OIDC (if configured)
+4. Portal validates user is on NetBird network
+5. User accesses portal features based on their permissions
+
+## Security Considerations
+
+<Warning>
+  **Network Isolation**: The portal should NEVER be exposed to the public internet. Only allow access through the NetBird VPN network.
+</Warning>
+
+### Best Practices
+
+- **Use HTTPS**: Even on internal networks, use SSL/TLS certificates
+- **Enable Firewall**: Restrict access to only the NetBird subnet
+- **Audit Logging**: All NetBird API calls are logged for security auditing
+- **Regular Updates**: Keep NetBird client and portal updated
+- **Device Trust**: Use NetBird's device approval workflow
+- **Multi-Factor Authentication**: Enable MFA in Zitadel for additional security
+
+## Monitoring
+
+Monitor NetBird connectivity and portal access:
+
+```bash
+# Check NetBird status
+netbird status
+
+# View NetBird logs
+journalctl -u netbird -f
+
+# Check portal access logs
+tail -f /var/log/nginx/access.log
+```
+
+## Troubleshooting
+
+### Cannot Access Portal
+
+1. Verify NetBird connection:
+   ```bash
+   netbird status
+   ```
+
+2. Check firewall rules:
+   ```bash
+   sudo ufw status
+   ```
+
+3. Verify portal is listening:
+   ```bash
+   netstat -tlnp | grep 8080
+   ```
+
+### NetBird API Errors
+
+Check the Edge Function logs:
+
+```bash
+supabase functions logs netbird-proxy
+```
+
+Verify your API key is valid in the NetBird dashboard.
+
+### Authentication Fails
+
+If using Zitadel OIDC:
+
+1. Verify redirect URI matches in Zitadel configuration
+2. Check that the URI uses the NetBird internal IP
+3. Ensure client ID and issuer URL are correct
+
+## Related Resources
+
+- [Headscale Setup](/infrastructure/headscale-setup) - Self-hosted Tailscale alternative
+- [Tailscale Integration](/infrastructure/tailscale-integration) - Alternative VPN solution
+- [Cloud Providers](/infrastructure/cloud-providers) - Cloud infrastructure integration

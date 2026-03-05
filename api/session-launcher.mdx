@@ -1,0 +1,275 @@
+---
+title: 'Session Launcher'
+description: 'Edge Function for launching remote access sessions via Guacamole, TSPlus, or direct connections'
+---
+
+## Overview
+
+The Session Launcher Edge Function generates authenticated session URLs for remote access to resources through various connection methods including Guacamole, TSPlus HTML5, RDP, SSH, and direct web access.
+
+**Endpoint:** `/functions/v1/session-launcher`
+
+**Authentication:** Required (Authorization header with Supabase JWT)
+
+**Method:** `POST`
+
+## Request
+
+<ParamField body="resourceId" type="string" required>
+  UUID of the resource to access from `resources` table
+</ParamField>
+
+<ParamField body="connectionType" type="string" required>
+  Connection method: `guacamole`, `tsplus`, `rdp`, `ssh`, or `direct`
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean">
+  Whether session launch was successful
+</ResponseField>
+
+<ResponseField name="sessionUrl" type="string">
+  Complete URL to access the resource
+</ResponseField>
+
+<ResponseField name="connectionId" type="string">
+  Unique session identifier (UUID)
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if request failed
+</ResponseField>
+
+## Connection Types
+
+### Direct Connection
+
+Returns the external URL for web applications or direct access.
+
+**Type:** `direct`
+
+- Uses `metadata.external_url` or falls back to `ip_address`
+- No session token required
+- Suitable for web applications with their own authentication
+
+```bash Example
+curl -X POST 'https://your-project.supabase.co/functions/v1/session-launcher' \
+  -H 'Authorization: Bearer YOUR_JWT' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "resourceId": "uuid-of-resource",
+    "connectionType": "direct"
+  }'
+```
+
+### Guacamole Connection
+
+Launches a session via Apache Guacamole through Pomerium proxy.
+
+**Type:** `guacamole`
+
+**URL Format:**
+```
+{pomerium_url}/guacamole/#/client/{encoded_connection_id}?token={session_token}
+```
+
+**Required Metadata:**
+- `pomerium_url` - Pomerium base URL (or `POMERIUM_BASE_URL` env var)
+- `guacamole_connection_id` - Guacamole connection identifier (defaults to resource ID)
+
+### TSPlus HTML5
+
+Connects to TSPlus HTML5 remote desktop gateway.
+
+**Type:** `tsplus`
+
+**URL Format:**
+```
+{tsplus_url}/html5/?user={user}&host={target_host}&token={session_token}
+```
+
+**Required Metadata:**
+- `tsplus_url` - TSPlus server URL (or `TSPLUS_BASE_URL` env var)
+- `tsplus_user` - Username for TSPlus (defaults to user email)
+- `target_host` - Target host IP or hostname
+
+### RDP via Guacamole
+
+Launches RDP session through Guacamole.
+
+**Type:** `rdp`
+
+**Required Metadata:**
+- `pomerium_url` - Pomerium base URL
+- `rdp_connection_id` - RDP connection identifier (defaults to `rdp-{resource_id}`)
+
+### SSH via Guacamole
+
+Launches SSH session through Guacamole.
+
+**Type:** `ssh`
+
+**Required Metadata:**
+- `pomerium_url` - Pomerium base URL
+- `ssh_connection_id` - SSH connection identifier (defaults to `ssh-{resource_id}`)
+
+## Session Token
+
+The function generates a signed session token for authenticated connections:
+
+```typescript Token Payload
+interface SessionToken {
+  sub: string      // User ID
+  rid: string      // Resource ID
+  cid: string      // Connection ID (UUID)
+  exp: number      // Expiration timestamp (1 hour)
+  iat: number      // Issued at timestamp
+}
+```
+
+**Format:** `{base64_payload}.{sha256_hash}`
+
+**Expiry:** 1 hour from creation
+
+<Warning>
+  In production, session tokens should be signed with HMAC-SHA256 using a secure secret key.
+</Warning>
+
+## Access Control
+
+The function enforces access control before generating session URLs:
+
+1. **Authentication Check:** Valid Supabase JWT required
+2. **Access Verification:** Queries `user_resource_access` table
+3. **Status Check:** Access must be `active`
+4. **Resource Validation:** Resource must exist and be accessible
+
+```sql Access Check
+SELECT id, status 
+FROM user_resource_access 
+WHERE user_id = ? 
+  AND resource_id = ? 
+  AND status = 'active'
+```
+
+## Audit Logging
+
+All session launches are logged to the `audit_logs` table:
+
+```typescript Audit Log Entry
+{
+  user_id: string
+  event: 'session_launched'
+  details: {
+    resource_id: string
+    resource_name: string
+    connection_type: string
+    connection_id: string
+    ip_address: string
+  }
+}
+```
+
+## Environment Variables
+
+<ParamField env="POMERIUM_BASE_URL" type="string">
+  Default Pomerium proxy URL (e.g., `https://access.yourcompany.com`)
+</ParamField>
+
+<ParamField env="TSPLUS_BASE_URL" type="string">
+  Default TSPlus server URL (e.g., `https://tsplus.yourcompany.com`)
+</ParamField>
+
+## TypeScript Interfaces
+
+```typescript TypeScript
+interface LaunchRequest {
+  resourceId: string
+  connectionType: 'guacamole' | 'tsplus' | 'rdp' | 'ssh' | 'direct'
+}
+
+interface LaunchResponse {
+  success: boolean
+  sessionUrl?: string
+  connectionId?: string
+  error?: string
+}
+```
+
+## Example Responses
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "sessionUrl": "https://access.company.com/guacamole/#/client/cmRwLWNvbm5lY3Rpb24tMTIz?token=eyJzdWIiOiJ1c2VyLWlkIiwicmlkIjoicmVzb3VyY2UtaWQifQ.abc123",
+  "connectionId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+### Error Responses
+
+**Missing Authorization:**
+```json
+{
+  "success": false,
+  "error": "Missing authorization header"
+}
+```
+
+**Access Denied:**
+```json
+{
+  "success": false,
+  "error": "Access denied to this resource"
+}
+```
+
+**Invalid Connection Type:**
+```json
+{
+  "success": false,
+  "error": "Invalid connection type"
+}
+```
+
+**No URL Configured:**
+```json
+{
+  "success": false,
+  "error": "No URL configured for this resource"
+}
+```
+
+## Resource Metadata
+
+Resource metadata should be stored as JSONB in the `resources.metadata` column:
+
+```json Example Metadata
+{
+  "external_url": "https://app.example.com",
+  "pomerium_url": "https://access.company.com",
+  "guacamole_connection_id": "connection-123",
+  "rdp_connection_id": "rdp-server-01",
+  "ssh_connection_id": "ssh-prod-server",
+  "tsplus_url": "https://rdp.company.com",
+  "tsplus_user": "domain\\username",
+  "target_host": "10.0.1.50"
+}
+```
+
+## Security Considerations
+
+1. **Token Signing:** Implement proper HMAC-SHA256 signing for production
+2. **Token Rotation:** Tokens expire after 1 hour
+3. **Access Validation:** Every request validates current access status
+4. **Audit Trail:** All launches logged with connection details
+5. **HTTPS Only:** Session URLs should only be served over HTTPS
+
+## Related Tables
+
+- `resources` - Resource definitions
+- `user_resource_access` - User access permissions
+- `audit_logs` - Session launch audit trail

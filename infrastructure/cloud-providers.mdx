@@ -1,0 +1,414 @@
+---
+title: Cloud Providers
+description: Manage public cloud infrastructure connections and credentials
+---
+
+## Overview
+
+Nexus Access Vault supports integration with major public cloud providers, enabling centralized management of cloud infrastructure credentials and resources. Connect to AWS, Azure, Google Cloud, and other providers to manage VMs, networks, and services.
+
+## Supported Providers
+
+<CardGroup cols={3}>
+  <Card title="Amazon AWS" icon="aws">
+    EC2, VPC, IAM, and other AWS services
+  </Card>
+  <Card title="Microsoft Azure" icon="microsoft">
+    Virtual Machines, VNets, Azure AD
+  </Card>
+  <Card title="Google Cloud" icon="google">
+    Compute Engine, VPC, Cloud IAM
+  </Card>
+  <Card title="DigitalOcean" icon="cloud">
+    Droplets, VPC, Kubernetes
+  </Card>
+  <Card title="Linode" icon="server">
+    Compute instances, NodeBalancers
+  </Card>
+  <Card title="Vultr" icon="server">
+    Cloud compute, block storage
+  </Card>
+</CardGroup>
+
+## Database Schema
+
+Cloud provider configurations are stored in the `cloud_providers` table:
+
+```sql
+CREATE TABLE cloud_providers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organizations(id),
+  name TEXT NOT NULL,
+  provider_type TEXT NOT NULL,
+  api_endpoint TEXT,
+  credentials JSONB NOT NULL, -- encrypted
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+## Adding Cloud Providers
+
+### Via Portal UI
+
+Navigate to the Cloud Providers page (`src/pages/CloudProviders.tsx`) and click "Add Provider":
+
+1. Enter a descriptive name (e.g., "AWS Production")
+2. Select provider type from dropdown
+3. Enter API endpoint (if custom)
+4. Provide access credentials
+5. Click "Add Provider"
+
+### Programmatically
+
+```typescript
+const { error } = await supabase
+  .from('cloud_providers')
+  .insert({
+    organization_id: profile.organization_id,
+    name: 'AWS Production',
+    provider_type: 'aws',
+    api_endpoint: null, // Use default AWS endpoints
+    credentials: {
+      access_key: 'AKIAIOSFODNN7EXAMPLE',
+      secret_key: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+    },
+  });
+```
+
+## Provider-Specific Configuration
+
+### Amazon AWS
+
+<Steps>
+  <Step title="Create IAM User">
+    Create a dedicated IAM user in the AWS Console with programmatic access
+  </Step>
+  <Step title="Attach Policies">
+    Attach required policies (e.g., AmazonEC2ReadOnlyAccess, AmazonVPCReadOnlyAccess)
+  </Step>
+  <Step title="Generate Access Keys">
+    Generate access key ID and secret access key
+  </Step>
+  <Step title="Add to Portal">
+    Add credentials to Nexus Access Vault
+  </Step>
+</Steps>
+
+**Required Credentials:**
+- Access Key ID
+- Secret Access Key
+- Optional: Session Token (for temporary credentials)
+
+```typescript
+credentials: {
+  access_key: 'AKIAIOSFODNN7EXAMPLE',
+  secret_key: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+  region: 'us-east-1' // optional default region
+}
+```
+
+### Microsoft Azure
+
+<Steps>
+  <Step title="Register Application">
+    Register an application in Azure Active Directory
+  </Step>
+  <Step title="Create Client Secret">
+    Generate a client secret for the application
+  </Step>
+  <Step title="Assign Roles">
+    Assign appropriate RBAC roles to the service principal
+  </Step>
+  <Step title="Add to Portal">
+    Add credentials to Nexus Access Vault
+  </Step>
+</Steps>
+
+**Required Credentials:**
+- Tenant ID
+- Client ID (Application ID)
+- Client Secret
+- Subscription ID
+
+```typescript
+credentials: {
+  tenant_id: '00000000-0000-0000-0000-000000000000',
+  client_id: '00000000-0000-0000-0000-000000000000',
+  client_secret: 'your-client-secret',
+  subscription_id: '00000000-0000-0000-0000-000000000000'
+}
+```
+
+### Google Cloud Platform
+
+<Steps>
+  <Step title="Create Service Account">
+    Create a service account in the GCP Console
+  </Step>
+  <Step title="Grant Permissions">
+    Grant necessary IAM roles (e.g., Compute Viewer, Network Viewer)
+  </Step>
+  <Step title="Generate Key">
+    Generate and download a JSON key file
+  </Step>
+  <Step title="Add to Portal">
+    Paste the JSON key content into the portal
+  </Step>
+</Steps>
+
+**Required Credentials:**
+- Service Account JSON Key
+
+```typescript
+credentials: {
+  type: 'service_account',
+  project_id: 'your-project-id',
+  private_key_id: 'key-id',
+  private_key: '-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n',
+  client_email: 'service-account@project.iam.gserviceaccount.com',
+  client_id: '123456789',
+  auth_uri: 'https://accounts.google.com/o/oauth2/auth',
+  token_uri: 'https://oauth2.googleapis.com/token'
+}
+```
+
+### DigitalOcean
+
+**Required Credentials:**
+- Personal Access Token
+
+```typescript
+credentials: {
+  access_key: 'dop_v1_xxxxxxxxxxxxxxxxxxxxxxxx',
+  secret_key: '' // Not used for DigitalOcean
+}
+```
+
+Generate a Personal Access Token from the DigitalOcean API settings.
+
+### Linode
+
+**Required Credentials:**
+- API Token
+
+```typescript
+credentials: {
+  access_key: 'your-linode-api-token',
+  secret_key: '' // Not used for Linode
+}
+```
+
+Generate an API token from the Linode Cloud Manager.
+
+### Vultr
+
+**Required Credentials:**
+- API Key
+
+```typescript
+credentials: {
+  access_key: 'your-vultr-api-key',
+  secret_key: '' // Not used for Vultr
+}
+```
+
+Generate an API key from the Vultr account settings.
+
+## Portal UI Component
+
+The Cloud Providers page (`src/pages/CloudProviders.tsx`) provides a visual interface:
+
+### Features
+
+- **List View**: Display all configured cloud providers
+- **Add Dialog**: Modal form to add new providers
+- **Provider Cards**: Visual cards showing provider status
+- **Delete Action**: Remove provider configurations
+
+### Component Structure
+
+```tsx
+interface CloudProvider {
+  id: string;
+  name: string;
+  provider_type: string;
+  api_endpoint: string | null;
+  created_at: string;
+}
+
+const loadProviders = async () => {
+  const { data, error } = await supabase
+    .from('cloud_providers')
+    .select('id, name, provider_type, api_endpoint, created_at')
+    .eq('organization_id', profile.organization_id)
+    .order('created_at', { ascending: false });
+};
+```
+
+## Security Best Practices
+
+<Warning>
+  **Credential Protection**: Cloud provider credentials are stored encrypted in the database. Never log or expose these credentials in client-side code.
+</Warning>
+
+### Recommendations
+
+1. **Least Privilege**: Grant minimal permissions required for operations
+2. **Read-Only Access**: Use read-only credentials when possible
+3. **Credential Rotation**: Regularly rotate access keys and tokens
+4. **Separate Accounts**: Use different credentials for dev/staging/prod
+5. **Audit Logging**: Monitor credential usage via cloud provider audit logs
+6. **IP Restrictions**: Restrict API access by source IP when supported
+7. **MFA**: Enable multi-factor authentication on cloud provider accounts
+
+## API Endpoints (Custom)
+
+For private cloud or on-premises installations, specify custom API endpoints:
+
+### AWS-Compatible (S3, MinIO)
+
+```typescript
+api_endpoint: 'https://s3.internal.company.com'
+```
+
+### OpenStack
+
+```typescript
+api_endpoint: 'https://openstack.company.com:5000/v3'
+credentials: {
+  username: 'admin',
+  password: 'secure-password',
+  project: 'default',
+  domain: 'Default'
+}
+```
+
+## Integration Examples
+
+### List EC2 Instances (AWS)
+
+```typescript
+import { EC2Client, DescribeInstancesCommand } from '@aws-sdk/client-ec2';
+
+const { data: provider } = await supabase
+  .from('cloud_providers')
+  .select('credentials')
+  .eq('id', providerId)
+  .single();
+
+const client = new EC2Client({
+  region: 'us-east-1',
+  credentials: {
+    accessKeyId: provider.credentials.access_key,
+    secretAccessKey: provider.credentials.secret_key,
+  },
+});
+
+const command = new DescribeInstancesCommand({});
+const response = await client.send(command);
+```
+
+### List Virtual Machines (Azure)
+
+```typescript
+import { ComputeManagementClient } from '@azure/arm-compute';
+import { ClientSecretCredential } from '@azure/identity';
+
+const credential = new ClientSecretCredential(
+  provider.credentials.tenant_id,
+  provider.credentials.client_id,
+  provider.credentials.client_secret
+);
+
+const client = new ComputeManagementClient(
+  credential,
+  provider.credentials.subscription_id
+);
+
+const vms = client.virtualMachines.listAll();
+```
+
+### List Compute Instances (GCP)
+
+```typescript
+import { Compute } from '@google-cloud/compute';
+
+const compute = new Compute({
+  projectId: provider.credentials.project_id,
+  credentials: provider.credentials,
+});
+
+const [vms] = await compute.getVMs();
+```
+
+## Monitoring and Alerts
+
+### Connection Status
+
+Implement health checks to verify provider connectivity:
+
+```typescript
+const checkProviderHealth = async (provider: CloudProvider) => {
+  try {
+    // Attempt a simple API call
+    switch (provider.provider_type) {
+      case 'aws':
+        // Call AWS STS GetCallerIdentity
+        break;
+      case 'azure':
+        // Call Azure Management API
+        break;
+      case 'gcp':
+        // Call GCP IAM API
+        break;
+    }
+    return { status: 'healthy', lastCheck: new Date() };
+  } catch (error) {
+    return { status: 'error', error: error.message };
+  }
+};
+```
+
+## Troubleshooting
+
+### Authentication Errors
+
+**AWS: "InvalidClientTokenId"**
+- Verify access key ID is correct
+- Check that IAM user exists and is active
+
+**Azure: "Authentication failed"**
+- Verify tenant ID and client ID
+- Check client secret hasn't expired
+- Ensure service principal has correct permissions
+
+**GCP: "Invalid credentials"**
+- Validate JSON key format
+- Ensure service account is enabled
+- Check project ID matches
+
+### Network Connectivity
+
+If custom API endpoints are unreachable:
+
+1. Verify endpoint URL is correct
+2. Check firewall rules allow outbound HTTPS
+3. Test connectivity from server:
+   ```bash
+   curl -I https://api.custom-cloud.com
+   ```
+
+### Permission Denied
+
+If API calls return permission errors:
+
+1. Review IAM policies/roles assigned to credentials
+2. Verify resource-level permissions
+3. Check for organization/service control policies
+
+## Related Resources
+
+- [Hypervisors](/infrastructure/hypervisors) - On-premises virtualization management
+- [Tailscale Integration](/infrastructure/tailscale-integration) - Secure cloud connectivity
+- [NetBird Integration](/infrastructure/netbird-integration) - VPN access to cloud resources

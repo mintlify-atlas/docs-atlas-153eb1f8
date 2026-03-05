@@ -1,0 +1,178 @@
+---
+title: Installation
+description: Install and set up Nexus Access Vault
+---
+
+Get Nexus Access Vault up and running in minutes with this comprehensive installation guide.
+
+## Prerequisites
+
+Before installing Nexus Access Vault, ensure you have:
+
+- **Node.js** version 18 or higher - [Install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- **npm** or your preferred package manager
+- A **Supabase** project - [Create one for free](https://supabase.com)
+- A **Zitadel** instance for SSO (optional)
+
+## Installation Steps
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Nexus Access Vault repository to your local machine:
+
+    ```bash
+    git clone <YOUR_GIT_URL>
+    cd <YOUR_PROJECT_NAME>
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Install all required dependencies using your preferred package manager:
+
+    <CodeGroup>
+      ```bash npm
+      npm install
+      ```
+
+      ```bash yarn
+      yarn install
+      ```
+
+      ```bash pnpm
+      pnpm install
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Configure environment variables">
+    Create a `.env` file in the root directory and configure the following variables:
+
+    ```bash
+    # Supabase Configuration
+    VITE_SUPABASE_PROJECT_ID="your-project-id"
+    VITE_SUPABASE_PUBLISHABLE_KEY="your-anon-key"
+    VITE_SUPABASE_URL="https://your-project.supabase.co"
+
+    # Zitadel OIDC Configuration (Optional)
+    # Domain: manager.kappa4.com
+    # The redirect URI should be: http://your-netbird-ip:8080/auth/callback
+    # or https://your-internal-domain.netbird/auth/callback
+    VITE_ZITADEL_ISSUER_URL="https://manager.kappa4.com"
+    VITE_ZITADEL_CLIENT_ID="your-client-id"
+    VITE_ZITADEL_REDIRECT_URI="http://localhost:8080/auth/callback"
+
+    # Network Configuration
+    # Set to 'internal' to restrict access to Netbird network only
+    VITE_NETWORK_MODE="internal"
+    # Netbird internal IP or DNS
+    VITE_INTERNAL_HOST="your-netbird-internal-ip-or-dns"
+    ```
+
+    <Note>
+      You can find a template with all available options in `.env.example`
+    </Note>
+  </Step>
+
+  <Step title="Configure Supabase">
+    Set up your Supabase project:
+
+    1. Create a new project at [supabase.com](https://supabase.com)
+    2. Copy your project URL and anon key from **Settings** > **API**
+    3. Update `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in your `.env` file
+    4. Run the database migrations (see [Database Setup](/deployment/database-setup))
+  </Step>
+
+  <Step title="Start the development server">
+    Launch the development server with hot-reload:
+
+    <CodeGroup>
+      ```bash npm
+      npm run dev
+      ```
+
+      ```bash yarn
+      yarn dev
+      ```
+
+      ```bash pnpm
+      pnpm dev
+      ```
+    </CodeGroup>
+
+    The application will be available at `http://localhost:8080`
+  </Step>
+</Steps>
+
+## Network Configuration
+
+Nexus Access Vault supports two network modes:
+
+### Internal Mode
+
+Restricts access to devices connected through Netbird VPN:
+
+```bash
+VITE_NETWORK_MODE="internal"
+VITE_INTERNAL_HOST="100.64.0.1"  # Your Netbird internal IP
+```
+
+### Public Mode
+
+Allows access from any network (not recommended for production):
+
+```bash
+VITE_NETWORK_MODE="public"
+```
+
+<Warning>
+  Always use internal mode in production environments to ensure secure access control.
+</Warning>
+
+## Verification
+
+After installation, verify your setup:
+
+1. Navigate to `http://localhost:8080`
+2. You should see the login page with authentication options
+3. Check the browser console for any configuration errors
+
+## Technology Stack
+
+Nexus Access Vault is built with:
+
+- **Vite** - Fast build tool and dev server
+- **TypeScript** - Type-safe JavaScript
+- **React** - UI framework
+- **shadcn/ui** - Component library
+- **Tailwind CSS** - Utility-first styling
+- **Supabase** - Backend and authentication
+- **Zitadel** - Enterprise SSO (optional)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication Setup" icon="lock" href="/getting-started/authentication">
+    Configure authentication and create your first user
+  </Card>
+  <Card title="Add Applications" icon="grid-2" href="/getting-started/first-application">
+    Publish your first application
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Port Already in Use
+
+If port 8080 is already in use, specify a different port:
+
+```bash
+npm run dev -- --port 3000
+```
+
+### Environment Variables Not Loaded
+
+Make sure your `.env` file is in the root directory and all variables start with `VITE_`.
+
+### Supabase Connection Error
+
+Verify your Supabase URL and API key are correct. Check your project is not paused in the Supabase dashboard.

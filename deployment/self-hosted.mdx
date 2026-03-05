@@ -1,0 +1,466 @@
+---
+title: "Self-Hosted Deployment"
+description: "Complete guide to deploying Nexus Access Vault in your own infrastructure"
+icon: "server"
+---
+
+## Overview
+
+Nexus Access Vault can be deployed as a self-hosted solution in your own infrastructure, giving you complete control over your data, security, and network configuration. This guide covers the complete deployment process from initial setup to production.
+
+## Prerequisites
+
+Before deploying Nexus Access Vault, ensure you have:
+
+<CardGroup cols={2}>
+  <Card title="Node.js" icon="node-js">
+    Node.js 18+ and npm installed ([Install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating))
+  </Card>
+  <Card title="Supabase Project" icon="database">
+    Active Supabase project with project ID and anon key
+  </Card>
+  <Card title="Zitadel Instance" icon="shield-check">
+    Zitadel OIDC provider configured for authentication
+  </Card>
+  <Card title="Network Access" icon="network-wired">
+    Netbird VPN or similar for network isolation (optional but recommended)
+  </Card>
+</CardGroup>
+
+## Deployment Steps
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the Nexus Access Vault repository to your server:
+
+    ```bash
+    git clone <YOUR_GIT_URL>
+    cd <YOUR_PROJECT_NAME>
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Install all required npm packages:
+
+    ```bash
+    npm install
+    ```
+  </Step>
+
+  <Step title="Configure Environment Variables">
+    Copy the example environment file and configure your settings:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    See [Environment Variables](/deployment/environment-variables) for detailed configuration.
+  </Step>
+
+  <Step title="Set Up Database">
+    Initialize your Supabase database with the required schema:
+
+    ```bash
+    # Install Supabase CLI
+    npm install -g supabase
+
+    # Link to your project
+    supabase link --project-ref <your-project-id>
+
+    # Run migrations
+    supabase db push
+    ```
+
+    See [Database Setup](/deployment/database-setup) for more details.
+  </Step>
+
+  <Step title="Configure Network Access (Optional)">
+    For VPN-only access, configure Netbird or your network solution:
+
+    ```bash
+    # Install Netbird
+    curl -fsSL https://pkgs.netbird.io/install.sh | sh
+
+    # Connect to your network
+    netbird up --setup-key <your-setup-key>
+    ```
+
+    See [Network Configuration](/deployment/network-configuration) for details.
+  </Step>
+
+  <Step title="Build the Application">
+    Build the production-ready application:
+
+    ```bash
+    npm run build
+    ```
+
+    This creates optimized static files in the `dist/` directory.
+  </Step>
+
+  <Step title="Start the Application">
+    For development:
+
+    ```bash
+    npm run dev
+    ```
+
+    For production, use a process manager like PM2:
+
+    ```bash
+    npm install -g pm2
+    npm run build
+    pm2 start npm --name "nexus-vault" -- run preview
+    ```
+  </Step>
+</Steps>
+
+## Production Deployment Options
+
+### Option 1: Static Hosting
+
+Since Nexus Access Vault is built with Vite, you can deploy the built static files to any static hosting service:
+
+<AccordionGroup>
+  <Accordion title="Deploy to Nginx">
+    ```nginx
+    server {
+        listen 80;
+        server_name your-domain.com;
+        root /path/to/nexus-vault/dist;
+        index index.html;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        # Enable gzip compression
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Deploy with Apache">
+    ```apache
+    <VirtualHost *:80>
+        ServerName your-domain.com
+        DocumentRoot /path/to/nexus-vault/dist
+
+        <Directory /path/to/nexus-vault/dist>
+            Options -Indexes +FollowSymLinks
+            AllowOverride All
+            Require all granted
+            
+            # Enable React Router
+            RewriteEngine On
+            RewriteBase /
+            RewriteRule ^index\.html$ - [L]
+            RewriteCond %{REQUEST_FILENAME} !-f
+            RewriteCond %{REQUEST_FILENAME} !-d
+            RewriteRule . /index.html [L]
+        </Directory>
+    </VirtualHost>
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Option 2: Node.js Server
+
+Run the application using Node.js with the built-in preview server:
+
+```bash
+# Build the application
+npm run build
+
+# Install PM2 for process management
+npm install -g pm2
+
+# Start with PM2
+pm2 start npm --name "nexus-vault" -- run preview
+
+# Save PM2 configuration
+pm2 save
+
+# Setup PM2 to start on boot
+pm2 startup
+```
+
+### Option 3: Docker Deployment
+
+Create a `Dockerfile` for containerized deployment:
+
+```dockerfile
+# Build stage
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+# Production stage
+FROM nginx:alpine
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+Create `nginx.conf`:
+
+```nginx
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+```
+
+Build and run:
+
+```bash
+# Build the image
+docker build -t nexus-vault:latest .
+
+# Run the container
+docker run -d -p 8080:80 --name nexus-vault nexus-vault:latest
+```
+
+Or use Docker Compose (`docker-compose.yml`):
+
+```yaml
+version: '3.8'
+
+services:
+  nexus-vault:
+    build: .
+    ports:
+      - "8080:80"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+```
+
+## Server Configuration
+
+### Binding to Specific Network Interface
+
+The default Vite configuration binds to all interfaces (`::`). For production, you may want to bind to a specific interface:
+
+```typescript
+// vite.config.ts
+export default defineConfig({
+  server: {
+    host: "your-netbird-ip",  // Bind to specific IP
+    port: 8080,
+  },
+});
+```
+
+See vite.config.ts:8-11 for the default configuration.
+
+### Firewall Rules
+
+For VPN-only access, configure your firewall to allow connections only from your VPN subnet:
+
+```bash
+# Example with ufw (Ubuntu)
+sudo ufw allow from 100.64.0.0/10 to any port 8080
+sudo ufw deny 8080
+```
+
+## Health Checks and Monitoring
+
+### Application Health
+
+Monitor your application with PM2:
+
+```bash
+# View application status
+pm2 status
+
+# View logs
+pm2 logs nexus-vault
+
+# Monitor resources
+pm2 monit
+```
+
+### Database Health
+
+Monitor your Supabase database through the Supabase dashboard or CLI:
+
+```bash
+# Check database status
+supabase db status
+
+# View database logs
+supabase logs db
+```
+
+## SSL/TLS Configuration
+
+For production deployments, always use HTTPS:
+
+<Tabs>
+  <Tab title="Let's Encrypt">
+    ```bash
+    # Install certbot
+    sudo apt-get install certbot python3-certbot-nginx
+
+    # Obtain certificate
+    sudo certbot --nginx -d your-domain.com
+
+    # Auto-renewal is configured automatically
+    sudo certbot renew --dry-run
+    ```
+  </Tab>
+
+  <Tab title="Self-Signed Certificate">
+    ```bash
+    # Generate self-signed certificate
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout /etc/ssl/private/nexus-vault.key \
+      -out /etc/ssl/certs/nexus-vault.crt
+
+    # Configure Nginx to use the certificate
+    # Update your nginx.conf with ssl_certificate and ssl_certificate_key
+    ```
+  </Tab>
+</Tabs>
+
+## Backup and Recovery
+
+### Database Backups
+
+Supabase automatically backs up your database. You can also create manual backups:
+
+```bash
+# Create a database dump
+supabase db dump -f backup.sql
+
+# Restore from backup
+supabase db reset
+psql -h db.your-project.supabase.co -U postgres -d postgres -f backup.sql
+```
+
+### Application Backups
+
+Backup your configuration files:
+
+```bash
+# Backup environment variables
+cp .env .env.backup
+
+# Backup custom configurations
+tar -czf config-backup.tar.gz .env vite.config.ts
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Application won't start">
+    - Check that all environment variables are set correctly
+    - Verify Node.js version is 18 or higher: `node --version`
+    - Check for port conflicts: `lsof -i :8080`
+    - Review application logs: `pm2 logs nexus-vault`
+  </Accordion>
+
+  <Accordion title="Cannot connect to database">
+    - Verify Supabase project ID and URL are correct
+    - Check that Supabase API key has not expired
+    - Ensure database migrations have been run: `supabase db status`
+    - Test connection: `supabase db ping`
+  </Accordion>
+
+  <Accordion title="Authentication not working">
+    - Verify Zitadel issuer URL is accessible
+    - Check that redirect URI matches the configured value
+    - Ensure client ID is correct
+    - Review browser console for OIDC errors
+  </Accordion>
+
+  <Accordion title="VPN access issues">
+    - Verify Netbird is connected: `netbird status`
+    - Check firewall rules allow traffic from VPN subnet
+    - Ensure application is bound to correct interface
+    - Test connectivity: `curl http://netbird-ip:8080`
+  </Accordion>
+</AccordionGroup>
+
+## Updating Your Deployment
+
+To update your deployment to a new version:
+
+<Steps>
+  <Step title="Backup Current Installation">
+    ```bash
+    # Backup database
+    supabase db dump -f backup-$(date +%Y%m%d).sql
+
+    # Backup configuration
+    cp .env .env.backup
+    ```
+  </Step>
+
+  <Step title="Pull Latest Changes">
+    ```bash
+    git fetch origin
+    git pull origin main
+    ```
+  </Step>
+
+  <Step title="Update Dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+
+  <Step title="Run New Migrations">
+    ```bash
+    supabase db push
+    ```
+  </Step>
+
+  <Step title="Rebuild and Restart">
+    ```bash
+    npm run build
+    pm2 restart nexus-vault
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="gear" href="/deployment/environment-variables">
+    Configure all environment variables for your deployment
+  </Card>
+  <Card title="Database Setup" icon="database" href="/deployment/database-setup">
+    Set up and migrate your Supabase database
+  </Card>
+  <Card title="Network Configuration" icon="network-wired" href="/deployment/network-configuration">
+    Configure VPN-only access with Netbird
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication/zitadel-setup">
+    Set up Zitadel OIDC authentication
+  </Card>
+</CardGroup>

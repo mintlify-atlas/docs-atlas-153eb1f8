@@ -1,0 +1,299 @@
+---
+title: 'Zitadel API'
+description: 'Supabase Edge Function for Zitadel OIDC/SAML integration and user management'
+---
+
+## Overview
+
+The Zitadel API Edge Function provides comprehensive integration with Zitadel identity provider, enabling OIDC authentication, user synchronization, group mapping, and role-based access control.
+
+**Endpoint:** `/functions/v1/zitadel-api`
+
+**Authentication:** Requires Supabase authorization header for most actions
+
+## Actions
+
+### Test Connection
+
+Tests connectivity to a Zitadel instance and validates API credentials.
+
+**Action:** `test-connection`
+
+<ParamField body="issuerUrl" type="string" required>
+  Zitadel issuer URL (e.g., `https://gate.kappa4.com`)
+</ParamField>
+
+<ParamField body="apiToken" type="string">
+  Zitadel Management API token for testing group/user access
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Indicates if connection was successful
+</ResponseField>
+
+<ResponseField name="apiConnected" type="boolean">
+  Whether API token is valid and working
+</ResponseField>
+
+<ResponseField name="groupCount" type="number">
+  Number of groups/roles discovered
+</ResponseField>
+
+```bash Example Request
+curl -X POST 'https://your-project.supabase.co/functions/v1/zitadel-api?action=test-connection' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "issuerUrl": "https://gate.kappa4.com",
+    "apiToken": "your-api-token"
+  }'
+```
+
+### List Groups
+
+Retrieve and sync Zitadel project roles/groups with local database.
+
+**Action:** `list-groups` or `sync-groups`
+
+<ParamField body="configId" type="string" required>
+  Zitadel configuration ID from `zitadel_configurations` table
+</ParamField>
+
+<ParamField body="projectId" type="string">
+  Optional Zitadel project ID to scope roles
+</ParamField>
+
+<ResponseField name="zitadelGroups" type="array">
+  Array of groups/roles from Zitadel
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">Role key</ResponseField>
+    <ResponseField name="name" type="string">Role name</ResponseField>
+    <ResponseField name="displayName" type="string">Display name</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="mappings" type="array">
+  Local group mappings
+</ResponseField>
+
+<ResponseField name="newGroupsAdded" type="number">
+  Count of new groups discovered and added
+</ResponseField>
+
+<ResponseField name="rolesSource" type="string">
+  Source of roles: `project_roles`, `user_grants`, or `org_members`
+</ResponseField>
+
+```bash Example Request
+curl -X POST 'https://your-project.supabase.co/functions/v1/zitadel-api?action=sync-groups' \
+  -H 'Authorization: Bearer YOUR_SUPABASE_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "configId": "uuid-of-config",
+    "projectId": "123456789"
+  }'
+```
+
+### List Project Users
+
+Retrieve users with grants/roles on a specific Zitadel project.
+
+**Action:** `list-project-users`
+
+<ParamField body="configId" type="string" required>
+  Zitadel configuration ID
+</ParamField>
+
+<ParamField body="projectId" type="string">
+  Zitadel project ID (uses config default if not provided)
+</ParamField>
+
+<ResponseField name="users" type="array">
+  Array of users with project access
+  <Expandable title="ZitadelUser properties">
+    <ResponseField name="id" type="string">Zitadel user ID</ResponseField>
+    <ResponseField name="userName" type="string">Username</ResponseField>
+    <ResponseField name="email" type="string">Email address</ResponseField>
+    <ResponseField name="displayName" type="string">Full name</ResponseField>
+    <ResponseField name="groups" type="string[]">Assigned roles</ResponseField>
+    <ResponseField name="grantId" type="string">Grant ID</ResponseField>
+    <ResponseField name="projectId" type="string">Project ID</ResponseField>
+    <ResponseField name="orgId" type="string">Organization ID</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="source" type="string">
+  Data source: `grants`, `project_members`, or `org_users`
+</ResponseField>
+
+### Search Users
+
+Search for users in the Zitadel organization.
+
+**Action:** `search-users`
+
+<ParamField body="configId" type="string" required>
+  Zitadel configuration ID
+</ParamField>
+
+<ParamField body="query" type="string">
+  Search query (searches username, case-insensitive)
+</ParamField>
+
+<ResponseField name="users" type="ZitadelUser[]">
+  Matching users
+</ResponseField>
+
+### Get User Groups
+
+Retrieve groups/roles for a specific user.
+
+**Action:** `get-user-groups`
+
+<ParamField body="configId" type="string" required>
+  Zitadel configuration ID
+</ParamField>
+
+<ParamField body="userId" type="string" required>
+  Zitadel user ID
+</ParamField>
+
+<ResponseField name="groups" type="string[]">
+  Array of role keys assigned to user
+</ResponseField>
+
+### SSO Callback
+
+Handles OIDC callback after user authentication, creates/updates local user.
+
+**Action:** `sso-callback`
+
+<ParamField body="configId" type="string" required>
+  Zitadel configuration ID
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  Authorization code from OAuth flow
+</ParamField>
+
+<ParamField body="codeVerifier" type="string">
+  PKCE code verifier for authorization code flow
+</ParamField>
+
+<ResponseField name="success" type="boolean">
+  Whether authentication succeeded
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  User's email address
+</ResponseField>
+
+<ResponseField name="tempPassword" type="string">
+  Temporary password for Supabase sign-in
+</ResponseField>
+
+<ResponseField name="userInfo" type="object">
+  User information from Zitadel
+  <Expandable title="properties">
+    <ResponseField name="sub" type="string">Zitadel user ID</ResponseField>
+    <ResponseField name="name" type="string">Display name</ResponseField>
+    <ResponseField name="email" type="string">Email</ResponseField>
+    <ResponseField name="groups" type="string[]">User groups</ResponseField>
+    <ResponseField name="roles" type="string[]">User roles</ResponseField>
+    <ResponseField name="orgId" type="string">Organization ID</ResponseField>
+    <ResponseField name="orgName" type="string">Organization name</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Get Auth URL
+
+Generates Zitadel authorization URL for OIDC login flow.
+
+**Action:** `get-auth-url`
+
+<ParamField body="configId" type="string" required>
+  Zitadel configuration ID
+</ParamField>
+
+<ParamField body="state" type="string" required>
+  OAuth state parameter
+</ParamField>
+
+<ParamField body="codeVerifier" type="string">
+  SHA-256 hashed code challenge for PKCE
+</ParamField>
+
+<ResponseField name="authUrl" type="string">
+  Complete authorization URL to redirect user to
+</ResponseField>
+
+<ResponseField name="state" type="string">
+  State value for verification
+</ResponseField>
+
+<ResponseField name="nonce" type="string">
+  Nonce for ID token validation
+</ResponseField>
+
+## TypeScript Interfaces
+
+```typescript TypeScript
+interface ZitadelConfig {
+  id: string
+  issuer_url: string
+  client_id: string
+  client_secret: string
+  redirect_uri: string
+  scopes: string[]
+  api_token: string
+  project_id?: string
+  sync_groups: boolean
+}
+
+interface ZitadelGroup {
+  id: string
+  name: string
+  displayName: string
+}
+
+interface ZitadelUser {
+  id: string
+  userName: string
+  email: string
+  displayName: string
+  groups: string[]
+  grantId?: string
+  projectId?: string
+  projectName?: string
+  orgId?: string
+  orgName?: string
+}
+```
+
+## Role Mapping
+
+The function automatically maps Zitadel roles to local roles:
+
+| Zitadel Role | Local Role |
+|--------------|------------|
+| `global_admin`, `admin`, `administrator` | `global_admin` |
+| `org_admin`, `org_manager` | `org_admin` |
+| `support`, `helpdesk` | `support` |
+| `user`, `member`, `viewer` | `user` |
+
+## Error Handling
+
+<ResponseField name="error" type="string">
+  Error message if request fails
+</ResponseField>
+
+Common errors:
+- `Configuration not found` - Invalid configId
+- `API token not configured` - Missing API token for action
+- `OIDC Discovery failed` - Cannot reach Zitadel instance
+- `Failed to fetch user grants` - Insufficient permissions
+
+## Related Tables
+
+- `zitadel_configurations` - Zitadel instance configurations
+- `zitadel_group_mappings` - Maps Zitadel roles to local groups
+- `user_zitadel_identities` - Links users to Zitadel identities

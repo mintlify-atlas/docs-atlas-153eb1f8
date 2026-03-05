@@ -1,0 +1,261 @@
+---
+title: Roles & Permissions
+description: Configure granular permissions for groups, manage user status, and control resource access
+---
+
+The **Roles & Permissions** page provides fine-grained control over what each group can do and which resources they can access. It also allows managing user activation status.
+
+## Access Requirements
+
+<Note>
+  Roles & Permissions requires **Organization Admin** or **Global Admin** role.
+</Note>
+
+## Overview
+
+The page is divided into three collapsible sections:
+
+1. **Permisos por Grupo** (Permissions by Group)
+2. **Estado de Usuarios** (User Status)
+3. **Acceso a Recursos por Grupo** (Resource Access by Group)
+
+## Permissions by Group
+
+Define what actions each group can perform.
+
+### Available Permissions
+
+Each group can be configured with these permissions:
+
+#### Ver aplicaciones (View Applications)
+
+- Allows viewing the list of available applications
+- **Default**: Enabled for all groups
+- **Icon**: AppWindow
+
+#### Gestionar usuarios (Manage Users)
+
+- Create, edit, and delete users in the organization
+- **Default**: Enabled for admin groups
+- **Icon**: Users
+
+#### Gestionar dispositivos (Manage Devices)
+
+- Register and manage user devices
+- **Default**: Enabled by default
+- **Icon**: Settings
+
+#### Gestionar recursos (Manage Resources)
+
+- Create, edit, and delete resources
+- **Default**: Enabled for admin groups
+- **Icon**: Server
+
+#### Ver auditoría (View Audit)
+
+- Access audit logs and activity history
+- **Default**: Enabled for admin and support groups
+- **Icon**: Eye
+
+### Editing Permissions
+
+1. Expand the **Permisos por Grupo** section
+2. Scroll to find the target group
+3. Toggle switches for each permission
+4. Click **Guardar Cambios** to save
+
+<Note>
+  Permissions are applied at the group level. All users in the group inherit these permissions.
+</Note>
+
+## User Status
+
+Enable or disable individual users.
+
+### Active vs. Inactive
+
+- **Active users**: Can log in and access resources (green badge)
+- **Inactive users**: Cannot log in (red badge, reduced opacity)
+
+### Toggling Status
+
+1. Expand the **Estado de Usuarios** section
+2. Find the user in the list
+3. Toggle the switch next to their name
+4. Click **Guardar Cambios** to save
+
+<Note>
+  Inactive users retain their assignments but cannot authenticate. Use this for temporary access suspension.
+</Note>
+
+### Visual Indicators
+
+| Status | Badge | Icon | Background |
+|--------|-------|------|------------|
+| Active | Green | UserCheck | Emerald 500/5 |
+| Inactive | Red | UserX | Red 500/5 |
+
+## Resource Access by Group
+
+Control which groups have access to which resources.
+
+### Access Matrix
+
+The access matrix displays:
+
+- **Rows**: Resources (applications, servers, etc.)
+- **Columns**: Groups in the organization
+- **Cells**: Access status (enabled/disabled)
+
+### Granting Access
+
+1. Expand the **Acceso a Recursos por Grupo** section
+2. Find the resource in the left column
+3. Click the circle in the group's column
+4. Circle turns green with a checkmark (✅)
+5. Click **Guardar Cambios** to save
+
+### Revoking Access
+
+1. Click the green checkmark circle
+2. Circle turns gray with an X (❌)
+3. Click **Guardar Cambios** to save
+
+<Note>
+  Group-based access is more efficient than assigning resources to individual users. Manage access at the group level for easier maintenance.
+</Note>
+
+## Permission Presets
+
+Apply common permission configurations quickly:
+
+### Restrictive Preset
+
+- Minimal permissions for all groups
+- Only admins can manage users and resources
+- Support can manage devices
+- Admins can view audit logs
+
+### Balanced Preset (Recommended)
+
+- Standard permissions for most groups
+- All groups can manage devices
+- Admins and support can manage resources
+- Admins and support can view audit logs
+
+### Permissive Preset
+
+- Maximum permissions for all groups
+- Support can manage users
+- All groups can manage devices and resources
+- All groups can view audit logs
+
+### Applying a Preset
+
+1. Click the **Aplicar preset...** dropdown
+2. Select **Restrictivo**, **Balanceado**, or **Permisivo**
+3. Permissions are applied immediately
+4. Click **Guardar Cambios** to save
+
+<Warning>
+  Presets overwrite all existing permissions. Review the changes before saving.
+</Warning>
+
+## Saving Changes
+
+All changes are local until saved:
+
+1. Make your permission, status, and access changes
+2. Click **Guardar Cambios** button (top right)
+3. Success toast appears
+4. Changes are persisted to the database
+
+<Note>
+  The save button is disabled while saving (shows spinner).
+</Note>
+
+## Section Controls
+
+Each section can be collapsed/expanded:
+
+- Click the section header to toggle
+- **ChevronDown** icon rotates 180° when expanded
+- Sections remember state during session
+
+## Empty States
+
+### No Groups
+
+If no groups exist:
+
+- No permissions to configure
+- Create groups first in [Organization Structure](/admin/organization-structure)
+
+### No Users
+
+If no users exist:
+
+- No user status to manage
+- Create users first in [User Management](/admin/user-management)
+
+### No Resources
+
+If no resources exist:
+
+- Access matrix displays: "No hay recursos configurados"
+- Add resources before configuring access
+
+## Permissions Matrix
+
+| Action | Org Admin | Global Admin | Support | User |
+|--------|-----------|--------------|---------|------|
+| View page | ✅ | ✅ | ❌ | ❌ |
+| Edit permissions | ✅ | ✅ | ❌ | ❌ |
+| Toggle user status | ✅ | ✅ | ❌ | ❌ |
+| Configure resource access | ✅ | ✅ | ❌ | ❌ |
+| Apply presets | ✅ | ✅ | ❌ | ❌ |
+
+## Use Cases
+
+### Restricting Admin Access
+
+1. Go to **Permisos por Grupo**
+2. Find "Developers" group
+3. Disable "Gestionar usuarios"
+4. Disable "Gestionar recursos"
+5. Save changes
+
+### Temporarily Disabling a User
+
+1. Go to **Estado de Usuarios**
+2. Find the user
+3. Toggle their status to Inactive
+4. Save changes
+
+### Granting Group Access to New App
+
+1. Go to **Acceso a Recursos por Grupo**
+2. Find the new app in the resource list
+3. Click circles for relevant groups
+4. Save changes
+
+## Best Practices
+
+<Note>
+  **Start Restrictive**: Begin with minimal permissions and add as needed. It's easier to grant permissions than revoke them.
+</Note>
+
+<Note>
+  **Use Presets Wisely**: Presets are great starting points but should be customized to your organization's needs.
+</Note>
+
+<Note>
+  **Audit Regularly**: Review permissions quarterly to ensure they align with current roles and responsibilities.
+</Note>
+
+## Related Pages
+
+- [Admin Panel](/admin/admin-panel)
+- [User Management](/admin/user-management)
+- [Organization Structure](/admin/organization-structure)
+- [Security Policies](/admin/security-policies)

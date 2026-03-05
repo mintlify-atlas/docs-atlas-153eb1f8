@@ -1,0 +1,466 @@
+---
+title: Device Enrollment
+description: Enroll and manage devices for secure access to Nexus Access Vault
+---
+
+Device enrollment ensures that only authorized devices can access your Nexus Access Vault resources.
+
+## Overview
+
+The device enrollment process involves:
+
+1. **Selecting device type** - Choose your device platform
+2. **Token validation** - Verify your invitation token
+3. **Installation** - Download and configure the client
+4. **Enrollment completion** - Activate secure access
+
+## Enrollment Wizard
+
+Nexus Access Vault provides a guided enrollment wizard with visual progress tracking:
+
+```typescript
+type WizardStep = 'device-type' | 'token-validation' | 'installation';
+
+const steps = [
+  { 
+    id: 'device-type', 
+    label: 'Tipo de Dispositivo',
+    description: 'Selecciona tu dispositivo'
+  },
+  { 
+    id: 'token-validation', 
+    label: 'Validar Token',
+    description: 'Ingresa tu invitación'
+  },
+  { 
+    id: 'installation', 
+    label: 'Instalación',
+    description: 'Descarga y configura'
+  },
+];
+```
+
+## Starting Device Enrollment
+
+<Steps>
+  <Step title="Navigate to enrollment page">
+    From the dashboard, go to **My Devices** and click **"Enroll New Device"**.
+
+    Alternatively, navigate directly to `/enroll`.
+  </Step>
+
+  <Step title="Check device limits">
+    The wizard displays your current device count and maximum allowed devices:
+
+    ```typescript
+    const { count } = await supabase
+      .from('devices')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .in('status', ['active', 'pending']);
+
+    // Typical limit: 2 devices per user
+    maxDevices: 2
+    currentDeviceCount: count || 0
+    ```
+
+    <Warning>
+      You cannot enroll new devices if you've reached your device limit. Remove an existing device first.
+    </Warning>
+  </Step>
+</Steps>
+
+## Step 1: Select Device Type
+
+Choose your device platform from the available options:
+
+### Supported Device Types
+
+<CardGroup cols={2}>
+  <Card title="Windows" icon="windows">
+    Windows 10/11 desktop and laptop computers
+  </Card>
+  <Card title="macOS" icon="apple">
+    Mac computers running macOS 11 or later
+  </Card>
+  <Card title="Linux" icon="linux">
+    Ubuntu, Debian, Fedora, and other distributions
+  </Card>
+  <Card title="iOS" icon="mobile">
+    iPhone and iPad devices (iOS 14+)
+  </Card>
+  <Card title="Android" icon="android">
+    Android phones and tablets (Android 10+)
+  </Card>
+</CardGroup>
+
+### Device Type Selector
+
+```typescript
+export type DeviceType = 
+  | 'windows' 
+  | 'macos' 
+  | 'linux' 
+  | 'ios' 
+  | 'android';
+
+<DeviceTypeSelector
+  selectedType={selectedDeviceType}
+  onSelect={handleDeviceSelect}
+  maxDevices={2}
+  currentDeviceCount={currentDeviceCount}
+/>
+```
+
+<Note>
+  Each device type has specific installation requirements. The wizard provides tailored instructions.
+</Note>
+
+## Step 2: Token Validation
+
+Validate your enrollment invitation token:
+
+<Steps>
+  <Step title="Obtain your token">
+    Your administrator provides an enrollment token via email or the admin panel.
+
+    Tokens are typically formatted as:
+    ```
+    NAV-XXXX-XXXX-XXXX-XXXX
+    ```
+  </Step>
+
+  <Step title="Enter the token">
+    Input your token in the validation field:
+
+    ```typescript
+    <TokenValidation
+      deviceType={selectedDeviceType}
+      onValidationSuccess={handleValidationSuccess}
+      onBack={() => setCurrentStep('device-type')}
+    />
+    ```
+  </Step>
+
+  <Step title="Verify token validity">
+    The system validates:
+
+    - Token format and structure
+    - Token expiration date
+    - Remaining usage count
+    - User eligibility
+
+    ```typescript
+    interface TokenValidationResult {
+      valid: boolean;
+      token: string;
+      expiresAt?: string;
+      metadata?: Record<string, unknown>;
+    }
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Tokens typically expire after 7 days. Request a new token if yours has expired.
+</Warning>
+
+## Step 3: Installation Instructions
+
+After token validation, follow platform-specific installation instructions:
+
+### Windows Installation
+
+<Steps>
+  <Step title="Download the installer">
+    Download the Netbird Windows client:
+
+    ```bash
+    # Direct download link provided in the wizard
+    netbird-installer-windows-amd64.exe
+    ```
+  </Step>
+
+  <Step title="Run the installer">
+    1. Double-click the downloaded installer
+    2. Follow the installation wizard
+    3. Grant administrator permissions when prompted
+  </Step>
+
+  <Step title="Launch and authenticate">
+    1. Open Netbird from the Start menu
+    2. Enter your enrollment token
+    3. Authenticate using your Nexus Access Vault credentials
+  </Step>
+
+  <Step title="Verify connection">
+    Check that Netbird shows "Connected" status:
+
+    ```powershell
+    netbird status
+    # Output: Status: Connected
+    ```
+  </Step>
+</Steps>
+
+### macOS Installation
+
+<Steps>
+  <Step title="Download the package">
+    ```bash
+    # Download Netbird for macOS
+    curl -O https://pkgs.netbird.io/macos/netbird.pkg
+    ```
+  </Step>
+
+  <Step title="Install via package manager">
+    ```bash
+    # Using Homebrew (recommended)
+    brew install netbird
+
+    # Or install the .pkg file
+    sudo installer -pkg netbird.pkg -target /
+    ```
+  </Step>
+
+  <Step title="Start the service">
+    ```bash
+    netbird up
+    # Enter your enrollment token when prompted
+    ```
+  </Step>
+
+  <Step title="Verify installation">
+    ```bash
+    netbird status
+    # Should show connected status and assigned IP
+    ```
+  </Step>
+</Steps>
+
+### Linux Installation
+
+<CodeGroup>
+```bash Ubuntu/Debian
+# Add Netbird repository
+curl -fsSL https://pkgs.netbird.io/debian/public.key | sudo apt-key add -
+echo "deb https://pkgs.netbird.io/debian stable main" | sudo tee /etc/apt/sources.list.d/netbird.list
+
+# Install Netbird
+sudo apt update
+sudo apt install netbird
+
+# Start service
+sudo netbird up
+```
+
+```bash Fedora/RHEL
+# Add Netbird repository
+sudo dnf config-manager --add-repo https://pkgs.netbird.io/yum/netbird.repo
+
+# Install Netbird
+sudo dnf install netbird
+
+# Start service
+sudo systemctl enable --now netbird
+sudo netbird up
+```
+
+```bash Arch Linux
+# Install from AUR
+yay -S netbird
+
+# Or using paru
+paru -S netbird
+
+# Start service
+sudo systemctl enable --now netbird
+sudo netbird up
+```
+</CodeGroup>
+
+### Mobile Installation (iOS/Android)
+
+<Steps>
+  <Step title="Download from app store">
+    **iOS**: [Download from App Store](https://apps.apple.com/app/netbird)
+
+    **Android**: [Download from Google Play](https://play.google.com/store/apps/details?id=io.netbird.client)
+  </Step>
+
+  <Step title="Open the app">
+    Launch Netbird after installation.
+  </Step>
+
+  <Step title="Enter enrollment token">
+    Tap **"Add Network"** and enter your enrollment token.
+  </Step>
+
+  <Step title="Grant VPN permissions">
+    Allow Netbird to create VPN configurations when prompted.
+  </Step>
+
+  <Step title="Connect">
+    Tap **"Connect"** to establish the secure tunnel.
+  </Step>
+</Steps>
+
+## Enrollment Completion
+
+Once installation is complete:
+
+<Steps>
+  <Step title="Verify device in dashboard">
+    Navigate to **My Devices** to see your newly enrolled device:
+
+    - Device name and type
+    - Connection status
+    - Assigned IP address
+    - Last seen timestamp
+  </Step>
+
+  <Step title="Test connectivity">
+    Try accessing an application to verify the connection:
+
+    ```bash
+    # Ping internal resource
+    ping 192.168.1.100
+    
+    # Access web application
+    curl http://internal-app.local
+    ```
+  </Step>
+
+  <Step title="Configure device settings">
+    Optionally configure:
+
+    - Device name
+    - Auto-connect on startup
+    - Network preferences
+  </Step>
+</Steps>
+
+## Managing Enrolled Devices
+
+### View Device Status
+
+Check device status in the My Devices page:
+
+```typescript
+interface Device {
+  id: string;
+  user_id: string;
+  device_name: string;
+  device_type: DeviceType;
+  status: 'active' | 'pending' | 'suspended' | 'revoked';
+  last_seen: string;
+  ip_address: string;
+  metadata: Record<string, unknown>;
+}
+```
+
+### Device Actions
+
+- **Rename** - Update device name
+- **Suspend** - Temporarily disable access
+- **Revoke** - Permanently remove device
+- **View Logs** - See connection history
+
+### Removing a Device
+
+To remove an enrolled device:
+
+<Steps>
+  <Step title="Navigate to My Devices">
+    Go to the My Devices page from the sidebar.
+  </Step>
+
+  <Step title="Select device">
+    Click the menu icon on the device you want to remove.
+  </Step>
+
+  <Step title="Confirm removal">
+    Click **"Remove Device"** and confirm the action.
+
+    <Warning>
+      Removing a device immediately terminates all active connections.
+    </Warning>
+  </Step>
+
+  <Step title="Uninstall client">
+    Optionally uninstall the Netbird client from the device:
+
+    **Windows**: Programs & Features
+    **macOS**: `brew uninstall netbird`
+    **Linux**: `sudo apt remove netbird`
+  </Step>
+</Steps>
+
+## Device Limits
+
+Nexus Access Vault enforces device limits per user:
+
+- **Free tier**: 2 devices
+- **Professional**: 5 devices
+- **Enterprise**: Unlimited devices
+
+<Tip>
+  Remove unused devices to free up slots for new enrollments.
+</Tip>
+
+## Security Considerations
+
+<AccordionGroup>
+  <Accordion title="Token security">
+    - Never share enrollment tokens
+    - Tokens expire after 7 days
+    - Each token has limited uses
+    - Revoked tokens cannot be reactivated
+  </Accordion>
+
+  <Accordion title="Device trust">
+    - Only enroll devices you own and control
+    - Keep client software updated
+    - Monitor device activity regularly
+    - Report suspicious activity immediately
+  </Accordion>
+
+  <Accordion title="Network isolation">
+    - Enrolled devices join a secure network overlay
+    - Traffic is encrypted end-to-end
+    - Devices cannot access unauthorized resources
+    - Network policies are enforced centrally
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Access Applications" icon="grid-2" href="/features/application-management">
+    Start using your enrolled device to access applications
+  </Card>
+  <Card title="Connection Methods" icon="plug" href="/features/application-management">
+    Learn about different connection types
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Enrollment Token Invalid
+
+Request a new token from your administrator. Tokens expire after 7 days.
+
+### Installation Failed
+
+Ensure you have administrator/sudo privileges and sufficient disk space.
+
+### Cannot Connect After Enrollment
+
+Check:
+- Netbird service is running
+- Firewall allows Netbird connections
+- Device status is "active" in the dashboard
+
+### Device Not Showing in Dashboard
+
+Wait a few minutes for synchronization. If it still doesn't appear, try re-enrolling.
