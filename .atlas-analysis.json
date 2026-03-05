@@ -1,0 +1,131 @@
+{
+  "projectType": "saas",
+  "projectName": "Nexus Access Vault",
+  "projectDescription": "Enterprise access management platform with SSO authentication, device enrollment, application provisioning, and zero-trust network access control",
+  "theme": "palm",
+  "primaryColor": "#fc5e11",
+  "lightColor": "#fa4763",
+  "darkColor": "#bd66ca",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "features",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Getting Started",
+            "pages": [
+              "getting-started/installation",
+              "getting-started/authentication",
+              "getting-started/first-application",
+              "getting-started/device-enrollment"
+            ]
+          },
+          {
+            "group": "Authentication & SSO",
+            "pages": [
+              "authentication/zitadel-setup",
+              "authentication/oidc-configuration",
+              "authentication/group-mapping",
+              "authentication/role-based-access"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/application-management",
+              "features/device-management",
+              "features/session-management",
+              "features/organization-management",
+              "features/user-groups",
+              "features/policies",
+              "features/audit-logging"
+            ]
+          },
+          {
+            "group": "Network & Infrastructure",
+            "pages": [
+              "infrastructure/netbird-integration",
+              "infrastructure/tailscale-integration",
+              "infrastructure/headscale-setup",
+              "infrastructure/cloud-providers",
+              "infrastructure/hypervisors"
+            ]
+          },
+          {
+            "group": "Administration",
+            "pages": [
+              "admin/admin-panel",
+              "admin/user-management",
+              "admin/organization-structure",
+              "admin/roles-permissions",
+              "admin/security-policies"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/self-hosted",
+              "deployment/environment-variables",
+              "deployment/database-setup",
+              "deployment/network-configuration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Edge Functions",
+            "pages": [
+              "api/zitadel-api",
+              "api/device-enrollment",
+              "api/session-launcher",
+              "api/tailscale-api",
+              "api/netbird-proxy"
+            ]
+          },
+          {
+            "group": "Database Schema",
+            "pages": [
+              "api/schema/authentication",
+              "api/schema/organizations",
+              "api/schema/devices",
+              "api/schema/applications"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "OIDC SSO authentication with Zitadel integration",
+    "PKCE-based secure authentication flow",
+    "Multi-tenant organization management",
+    "Role-based access control with group mapping",
+    "Device enrollment and management",
+    "Application marketplace and provisioning",
+    "Session management and launcher",
+    "Zero-trust network access via Netbird/Tailscale",
+    "Comprehensive audit logging",
+    "Cloud provider and hypervisor integration"
+  ],
+  "publicApiSurface": [
+    "/functions/v1/zitadel-api?action=get-auth-url",
+    "/functions/v1/zitadel-api?action=sso-callback",
+    "/functions/v1/device-enrollment",
+    "/functions/v1/session-launcher",
+    "/functions/v1/tailscale-api",
+    "/functions/v1/netbird-proxy",
+    "/auth/callback",
+    "/enroll"
+  ]
+}
