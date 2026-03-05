@@ -107,7 +107,8 @@
               "api/device-enrollment",
               "api/session-launcher",
               "api/tailscale-api",
-              "api/netbird-proxy"
+              "api/netbird-proxy",
+              "api/create-user-admin"
             ]
           },
           {

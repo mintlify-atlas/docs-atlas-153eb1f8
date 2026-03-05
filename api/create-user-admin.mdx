@@ -1,0 +1,202 @@
+---
+title: 'Create User Admin'
+description: 'Administrative user creation function for privileged accounts'
+---
+
+## Overview
+
+The Create User Admin Edge Function provides a secure API for administrators to create new user accounts with specific roles and organization assignments. This function bypasses normal user signup flows and allows immediate account activation with pre-assigned roles.
+
+**Endpoint:** `/functions/v1/create-user-admin`
+
+**Authentication:** Required (Authorization header with Supabase JWT)
+
+**Method:** `POST`
+
+**Permissions:** Only users with `global_admin`, `org_admin`, or `support` roles can create users
+
+## Request Format
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Supabase JWT token: `Bearer {token}`
+</ParamField>
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/json`
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="email" type="string" required>
+  Email address for the new user account. Must be unique in the system.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Initial password for the user account. User can change this after first login.
+</ParamField>
+
+<ParamField body="full_name" type="string" required>
+  Full name of the user to be displayed in the system.
+</ParamField>
+
+<ParamField body="role" type="string" required>
+  Role to assign to the user. Valid values: `usuario`, `soporte`, `org_admin`, `global_admin`
+</ParamField>
+
+<ParamField body="organization_id" type="string">
+  UUID of the organization to assign the user to. If not provided, uses the caller's organization.
+</ParamField>
+
+## Response Format
+
+### Success Response (200)
+
+<ResponseField name="success" type="boolean">
+  Always `true` on successful user creation
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  Information about the created user
+  <Expandable title="user properties">
+    <ResponseField name="id" type="string">
+      UUID of the newly created user
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      Email address of the new user
+    </ResponseField>
+    <ResponseField name="full_name" type="string">
+      Full name of the new user
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Error Response (400)
+
+<ResponseField name="error" type="string">
+  Error message describing what went wrong
+</ResponseField>
+
+## TypeScript Interface
+
+From `supabase/functions/create-user-admin/index.ts:10-16`:
+
+```typescript
+interface CreateUserRequest {
+  email: string;
+  password: string;
+  full_name: string;
+  role: string;
+  organization_id: string;
+}
+```
+
+## Example Usage
+
+### Create Global Admin User
+
+```bash
+curl -X POST \
+  https://your-project.supabase.co/functions/v1/create-user-admin \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "password": "SecurePassword123!",
+    "full_name": "Admin User",
+    "role": "global_admin",
+    "organization_id": "550e8400-e29b-41d4-a716-446655440000"
+  }'
+```
+
+### Create Organization Admin
+
+```bash
+curl -X POST \
+  https://your-project.supabase.co/functions/v1/create-user-admin \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "orgadmin@example.com",
+    "password": "OrgPassword456!",
+    "full_name": "Organization Admin",
+    "role": "org_admin"
+  }'
+```
+
+<Note>
+  When `organization_id` is omitted, the new user is assigned to the same organization as the caller.
+</Note>
+
+## Authorization Logic
+
+The function implements role-based authorization from `supabase/functions/create-user-admin/index.ts:56-59`:
+
+```typescript
+const allowedRoles = ["global_admin", "org_admin", "support"];
+if (!allowedRoles.includes(callerProfile.role)) {
+  throw new Error("Insufficient permissions to create users");
+}
+```
+
+Only users with these roles can create new accounts:
+- **global_admin** - Can create users in any organization
+- **org_admin** - Can create users in their own organization
+- **support** - Can create users as part of support operations
+
+## Implementation Details
+
+### User Creation Flow
+
+1. **Authentication Check** - Validates the Authorization header contains a valid JWT token
+2. **Permission Verification** - Confirms the caller has one of the allowed roles (`global_admin`, `org_admin`, or `support`)
+3. **User Creation** - Creates the user account using Supabase Admin API with email confirmation automatically enabled
+4. **Profile Update** - Updates the user's profile record with the specified organization and role
+5. **Response** - Returns the new user's ID, email, and full name
+
+### Email Confirmation
+
+Users created via this function have `email_confirm: true` set automatically (line 73), meaning they can log in immediately without requiring email verification.
+
+### Password Requirements
+
+The function accepts any password provided. It's recommended to enforce strong password policies at the application level before calling this function.
+
+## Error Handling
+
+Common error scenarios:
+
+| Error Message | Cause | Resolution |
+|--------------|-------|------------|
+| "No authorization header" | Missing Authorization header | Include valid JWT token in Authorization header |
+| "Unauthorized" | Invalid or expired token | Refresh authentication token |
+| "Insufficient permissions to create users" | Caller lacks required role | Only admins and support can create users |
+| "Could not verify caller permissions" | Profile lookup failed | Ensure caller has a valid profile record |
+| "Failed to create user" | User creation failed | Check if email already exists or other validation errors |
+
+## Security Considerations
+
+<Warning>
+  This function uses the Supabase Service Role Key to bypass Row Level Security policies. Only expose this endpoint to trusted administrators.
+</Warning>
+
+- **Service Role Key**: Uses `SUPABASE_SERVICE_ROLE_KEY` to create users (line 31)
+- **CORS**: Accepts requests from any origin (`Access-Control-Allow-Origin: *`)
+- **Session Isolation**: Uses `persistSession: false` to prevent session leakage
+- **Role Validation**: Enforces strict role checking before allowing user creation
+
+## Related Documentation
+
+- [User Management](/admin/user-management)
+- [Roles & Permissions](/admin/roles-permissions)
+- [Organization Management](/features/organization-management)
+- [Authentication Schema](/api/schema/authentication)
+
+## Environment Variables
+
+Required environment variables (automatically available in Supabase Edge Functions):
+
+- `SUPABASE_URL` - Your Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key for admin operations
+- `SUPABASE_ANON_KEY` - Anonymous key for caller authentication
